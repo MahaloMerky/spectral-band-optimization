@@ -29,14 +29,14 @@ statistics. Classifier results may rank subsets differently.
 Search folds: every fold for k ≤ 4, one fixed scene split for k = 5, and a final run
 on all data (`stats_all.npz`) only to report the bands.
 
-Search space with n ≈ 250 candidate bands, to be recomputed from the real band count:
+Search space with n ≈ 255 candidate bands, to be recomputed from the real band count:
 
 | k | Subsets |
 | --- | --- |
-| 3 | 2.6×10⁶ |
-| 4 | 1.6×10⁸ |
-| 5 | 7.8×10⁹ |
-| 6 | 3.2×10¹¹ |
+| 3 | 2.7×10⁶ |
+| 4 | 1.7×10⁸ |
+| 5 | 8.6×10⁹ |
+| 6 | 3.6×10¹¹ |
 
 ## Setup
 
