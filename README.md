@@ -97,14 +97,3 @@ near-ties may be incomplete, in which case rerun the search with a larger `--top
 | `scripts/` | Command-line entry points |
 | `slurm/` | Job array templates |
 | `data/` | Local data, not committed. See [data/README.md](data/README.md) |
-
-## Roadmap
-
-- [x] Core scoring, exact search chunks, TOA conversion, scene-based folds, tests
-- [ ] **Week 1 (Nov 2):** download and tile EMIT scenes, inspect L2A cloud spectra, build labels and the TOA pixel table, compute class statistics, set up the cluster environment
-- [ ] **Week 2 (Nov 9):** simulate OLI and Landsat Next, benchmark GPU throughput, exact search for k = 3, 4
-- [ ] **Week 3 (Nov 16):** exact search for k = 5; greedy, floating search, mRMR, L1 methods
-- [ ] **Week 4 (Nov 23):** genetic algorithm, simulated annealing, optimality-gap analysis
-- [ ] **Week 5 (Nov 30):** differentiable design, constraint sweeps, classifier evaluation with spatial CV
-- [ ] **Week 6 (Dec 7):** scaling study, robustness tests, stretch goals
-- [ ] **Week 7 (Dec 14):** figures, physical interpretation, report, presentation
