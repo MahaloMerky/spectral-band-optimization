@@ -1,9 +1,9 @@
 #!/bin/bash
 # Usage, from the repository root:
 #   mkdir -p logs
-#   STATS=data/processed/class_stats.npz K=4 sbatch slurm/exact_search.sbatch
+#   STATS=data/processed/stats_fold0.npz K=4 OUT=results/exact/k4/fold0 sbatch slurm/exact_search.sbatch
 # Then merge:
-#   python scripts/merge_exact.py results/exact/k$K --stats $STATS
+#   python scripts/merge_exact.py $OUT --stats $STATS
 #
 # Set the partition and any module loads for your cluster before the first run.
 
@@ -20,5 +20,6 @@ set -euo pipefail
 
 : "${STATS:?Set STATS to the class statistics file}"
 : "${K:?Set K to the band count}"
+: "${OUT:?Set OUT to the output directory}"
 
-python scripts/exact_search.py --stats "$STATS" --k "$K" --out "results/exact/k$K"
+python scripts/exact_search.py --stats "$STATS" --k "$K" --out "$OUT"

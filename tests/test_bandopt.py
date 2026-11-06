@@ -8,7 +8,7 @@ import torch
 from bandopt.combinatorics import chunk_range, unrank_subsets
 from bandopt.exact import search_rank_range
 from bandopt.sensors import candidate_band_mask, gaussian_response, simulate_bands
-from bandopt.separability import pairwise_jm, worst_case_jm
+from bandopt.separability import pairwise_jm, worst_case_bhattacharyya, worst_case_jm
 from bandopt.stats import class_statistics
 
 
@@ -90,7 +90,7 @@ def test_chunked_search_finds_brute_force_optimum():
     mu, sigma = random_statistics()
     k = 3
     all_subsets = torch.tensor(list(itertools.combinations(range(mu.shape[1]), k)))
-    expected = worst_case_jm(mu, sigma, all_subsets).max().item()
+    expected = worst_case_bhattacharyya(mu, sigma, all_subsets).max().item()
 
     total = all_subsets.shape[0]
     chunks = [

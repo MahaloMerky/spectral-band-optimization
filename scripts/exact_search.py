@@ -21,7 +21,7 @@ def main():
     parser.add_argument("--task-id", type=int, default=int(os.environ.get("SLURM_ARRAY_TASK_ID", 0)))
     parser.add_argument("--n-tasks", type=int, default=int(os.environ.get("SLURM_ARRAY_TASK_COUNT", 1)))
     parser.add_argument("--batch-size", type=int, default=100_000)
-    parser.add_argument("--top", type=int, default=100)
+    parser.add_argument("--top", type=int, default=1000)
     args = parser.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -47,6 +47,7 @@ def main():
         stop=stop,
         n_bands=mu.shape[1],
         k=args.k,
+        top=args.top,
         elapsed_seconds=elapsed,
     )
     rate = (stop - start) / elapsed if elapsed else float("inf")

@@ -2,8 +2,11 @@
 
 import torch
 
-# Strong water-vapour absorption, where EMIT surface reflectance is unreliable.
+# Strong water-vapour absorption, removed from the main analysis.
 WATER_VAPOUR_WINDOWS_NM = ((1350.0, 1420.0), (1800.0, 1950.0))
+# Cirrus sensitivity run: keeps 1.35-1.42 um, where ice cloud can stay bright while
+# the surface is mostly hidden. Almost no signal reaches the sensor at 1.80-1.95 um.
+CIRRUS_RUN_WINDOWS_NM = ((1800.0, 1950.0),)
 
 FWHM_PER_SIGMA = 2.355
 

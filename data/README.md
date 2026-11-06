@@ -5,7 +5,9 @@ scratch storage and symlink them here.
 
 | Dataset | Source | Local path |
 | --- | --- | --- |
-| EMIT L2A surface reflectance and masks (`EMITL2ARFL`) | [NASA LP DAAC via Earthdata](https://lpdaac.usgs.gov/products/emitl2arflv001/) | `data/raw/emit/` |
+| EMIT L1B radiance and observation geometry (`EMITL1BRAD`) | NASA LP DAAC via Earthdata | `data/raw/emit/` |
+| EMIT L2A reflectance and masks (`EMITL2ARFL`), for cloud masks and for inspecting cloud spectra | [NASA LP DAAC via Earthdata](https://lpdaac.usgs.gov/products/emitl2arflv001/) | `data/raw/emit/` |
+| Solar irradiance spectrum, such as TSIS-1 HSRS | NASA / LASP | `data/raw/solar/` |
 | ESA WorldCover 10 m 2021 v200 | [Zenodo](https://doi.org/10.5281/zenodo.7254221) | `data/raw/worldcover/` |
 | OLI and OLI-2 relative spectral responses | USGS | `data/raw/srf/` |
 | Landsat Next band edges | [USGS Fact Sheet 2024-3005](https://pubs.usgs.gov/publication/fs20243005) | `data/raw/srf/` |

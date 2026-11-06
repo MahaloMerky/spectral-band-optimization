@@ -1,7 +1,8 @@
-"""Per-class spectral statistics used by the separability score."""
+"""Per-class spectral statistics and scene-based data splits."""
 
 import numpy as np
 from sklearn.covariance import LedoitWolf
+from sklearn.model_selection import GroupKFold
 
 
 def class_statistics(spectra, labels, ridge=1e-6):
@@ -31,3 +32,39 @@ def class_statistics(spectra, labels, ridge=1e-6):
         means[i] = estimator.location_
         covariances[i] = covariance + loading * np.eye(n_bands)
     return means, covariances, classes
+
+
+def scene_folds(labels, scene_ids, n_folds):
+    """Split pixels into folds that keep each scene whole.
+
+    Band selection must use only a fold's training mask, or held-out scores will
+    be inflated.
+
+    Args:
+        labels: Integer class labels with shape (pixels,).
+        scene_ids: Scene identifiers with shape (pixels,).
+        n_folds: Number of folds, at most the number of scenes.
+
+    Returns:
+        A list of (train_mask, test_mask) boolean arrays.
+
+    Raises:
+        ValueError: If a fold's training data would be missing a class. Every class
+            must have pixels in enough scenes for the chosen number of folds.
+    """
+    labels = np.asarray(labels)
+    scene_ids = np.asarray(scene_ids)
+    all_classes = np.unique(labels)
+    folds = []
+    for fold, (train, test) in enumerate(
+        GroupKFold(n_splits=n_folds).split(labels, groups=scene_ids)
+    ):
+        missing = np.setdiff1d(all_classes, labels[train])
+        if missing.size:
+            raise ValueError(
+                f"Fold {fold} has no training pixels for classes {missing.tolist()}"
+            )
+        train_mask = np.zeros(labels.size, dtype=bool)
+        train_mask[train] = True
+        folds.append((train_mask, ~train_mask))
+    return folds

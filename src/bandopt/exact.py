@@ -5,12 +5,15 @@ from dataclasses import dataclass
 import torch
 
 from bandopt.combinatorics import binomial_table, unrank_subsets
-from bandopt.separability import worst_case_jm
+from bandopt.separability import worst_case_bhattacharyya
 
 
 @dataclass
 class ChunkResult:
-    """The best subsets found in a rank range, best first."""
+    """The best subsets found in a rank range, best first.
+
+    Scores are worst-case Bhattacharyya distances.
+    """
 
     ranks: torch.Tensor
     scores: torch.Tensor
@@ -18,7 +21,7 @@ class ChunkResult:
 
 
 @torch.inference_mode()
-def search_rank_range(mu, sigma, k, start, stop, batch_size=100_000, top=100):
+def search_rank_range(mu, sigma, k, start, stop, batch_size=100_000, top=1000):
     """Score ranks in [start, stop) and keep the highest-scoring subsets.
 
     Subsets that could not be scored are counted in n_failed. A nonzero count
@@ -35,7 +38,7 @@ def search_rank_range(mu, sigma, k, start, stop, batch_size=100_000, top=100):
         batch_stop = min(batch_start + batch_size, stop)
         ranks = torch.arange(batch_start, batch_stop, dtype=torch.int64, device=device)
         subsets = unrank_subsets(ranks, n_bands, k, table)
-        scores = worst_case_jm(mu, sigma, subsets)
+        scores = worst_case_bhattacharyya(mu, sigma, subsets)
 
         valid = ~scores.isnan()
         n_failed += int((~valid).sum())

@@ -13,6 +13,31 @@ imagery on a SLURM cluster. See the [proposal](docs/GGS426_Final_Project_Proposa
    and is the placement physically interpretable?
 4. **RQ4:** How do run time and parallel efficiency scale with cores and GPUs?
 
+## Changes from the proposal
+
+| Topic | Proposal | Now | Reason |
+| --- | --- | --- | --- |
+| Input data | L2A surface reflectance | L1B radiance converted to TOA reflectance, for all classes | Surface reflectance retrieval assumes a view of the surface, which does not hold over clouds. One quantity keeps all classes comparable |
+| Search score | Worst-case JM | Worst-case Bhattacharyya distance, reported as JM | Same ranking, without JM's rounding ties close to 2 |
+| Near-ties | Not specified | Subsets within 0.001 JM of the best are ranked by mean JM | Gives a defined choice among practically equal subsets |
+| Leakage | Spatial CV for evaluation | Class statistics and band selection also use training scenes only | Selecting bands with held-out scenes would inflate scores |
+| OLI baseline | 7 bands | 7 bands in the main run, 8 with cirrus in a sensitivity run for k ≤ 4 | The main run removes the window holding OLI's cirrus band |
+
+"Exact optimum" means the exact optimum of the filter score on the training
+statistics. Classifier results may rank subsets differently.
+
+Search folds: every fold for k ≤ 4, one fixed scene split for k = 5, and a final run
+on all data (`stats_all.npz`) only to report the bands.
+
+Search space with n ≈ 250 candidate bands, to be recomputed from the real band count:
+
+| k | Subsets |
+| --- | --- |
+| 3 | 2.6×10⁶ |
+| 4 | 1.6×10⁸ |
+| 5 | 7.8×10⁹ |
+| 6 | 3.2×10¹¹ |
+
 ## Setup
 
 ```bash
@@ -34,8 +59,10 @@ If the cluster needs a specific CUDA build of PyTorch, install it with the
 ## Exact search
 
 The search reads a statistics file holding `mu` (classes x bands), `sigma`
-(classes x bands x bands), and `wavelengths_nm`. Real statistics do not exist yet,
-so use synthetic ones to try the pipeline:
+(classes x bands x bands), and `wavelengths_nm`. For real data,
+`scripts/compute_stats.py` writes one file per scene-based fold from a table of
+labelled TOA pixels (add `--cirrus-run` for the sensitivity run). That table does not
+exist yet, so use synthetic statistics to try the pipeline:
 
 ```bash
 python scripts/make_synthetic_stats.py --out data/processed/synthetic_stats.npz
@@ -49,19 +76,21 @@ python scripts/merge_exact.py results/exact/k3 --stats data/processed/synthetic_
 
 # Or on the cluster: set the partition in the script first
 mkdir -p logs
-STATS=data/processed/synthetic_stats.npz K=3 sbatch slurm/exact_search.sbatch
+STATS=data/processed/synthetic_stats.npz K=3 OUT=results/exact/k3 sbatch slurm/exact_search.sbatch
 ```
 
-The merge step exits with an error unless the chunks cover the whole search space and
-every candidate subset was scored successfully. Only a passing merge counts as an
-exact optimum.
+The merge step exits with an error unless the chunks cover the whole search space,
+every candidate subset was scored successfully, and the scores match the statistics
+file. Only a passing merge counts as an exact optimum. It warns if the list of
+near-ties may be incomplete, in which case rerun the search with a larger `--top`.
 
 ## Layout
 
 | Path | Purpose |
 | --- | --- |
 | `src/bandopt/sensors.py` | Band simulation (Eq. 1), Gaussian responses (Eq. 4), water-vapour mask |
-| `src/bandopt/stats.py` | Class means and shrunk covariances |
+| `src/bandopt/toa.py` | Radiance to TOA reflectance, and band-averaged solar irradiance |
+| `src/bandopt/stats.py` | Class means, shrunk covariances, and scene-based folds |
 | `src/bandopt/separability.py` | Batched Bhattacharyya, Jeffries–Matusita, and worst-case score (Eqs. 2–3) |
 | `src/bandopt/combinatorics.py` | Integer-to-subset mapping and chunking for job arrays |
 | `src/bandopt/exact.py` | Exhaustive scoring of one chunk, keeping the top subsets |
@@ -71,8 +100,8 @@ exact optimum.
 
 ## Roadmap
 
-- [x] Core scoring, exact search chunks, tests
-- [ ] **Week 1 (Nov 2):** download and tile EMIT scenes, build labels, compute class statistics, set up the cluster environment
+- [x] Core scoring, exact search chunks, TOA conversion, scene-based folds, tests
+- [ ] **Week 1 (Nov 2):** download and tile EMIT scenes, inspect L2A cloud spectra, build labels and the TOA pixel table, compute class statistics, set up the cluster environment
 - [ ] **Week 2 (Nov 9):** simulate OLI and Landsat Next, benchmark GPU throughput, exact search for k = 3, 4
 - [ ] **Week 3 (Nov 16):** exact search for k = 5; greedy, floating search, mRMR, L1 methods
 - [ ] **Week 4 (Nov 23):** genetic algorithm, simulated annealing, optimality-gap analysis

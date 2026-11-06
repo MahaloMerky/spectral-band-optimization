@@ -10,8 +10,13 @@ def _cholesky(matrices):
     return factors, log_determinants, info == 0
 
 
-def pairwise_jm(mu, sigma, subsets):
-    """Compute the JM distance of every class pair for a batch of band subsets.
+def jm_from_bhattacharyya(distance):
+    """Convert Bhattacharyya distance to Jeffries-Matusita distance."""
+    return -2 * torch.expm1(-distance)
+
+
+def pairwise_bhattacharyya(mu, sigma, subsets):
+    """Compute the Bhattacharyya distance of every class pair for a batch of subsets.
 
     Args:
         mu: Class means with shape (classes, bands).
@@ -19,7 +24,7 @@ def pairwise_jm(mu, sigma, subsets):
         subsets: Band indices with shape (batch, k).
 
     Returns:
-        JM distances with shape (batch, pairs), ordered by torch.triu_indices.
+        Distances with shape (batch, pairs), ordered by torch.triu_indices.
         A subset is NaN for any pair whose covariance is not positive definite.
     """
     n_classes = mu.shape[0]
@@ -34,20 +39,31 @@ def pairwise_jm(mu, sigma, subsets):
         difference = (mu_s[a] - mu_s[b]).unsqueeze(-1)
         whitened = torch.linalg.solve_triangular(factors, difference, upper=False)
         mahalanobis = (whitened**2).sum(dim=(-2, -1))
-        bhattacharyya = mahalanobis / 8 + 0.5 * (
+        distance = mahalanobis / 8 + 0.5 * (
             mean_log_det - 0.5 * (class_log_det[a] + class_log_det[b])
         )
-        jm = 2 * (1 - torch.exp(-bhattacharyya))
         valid = class_ok[a] & class_ok[b] & mean_ok
-        distances.append(torch.where(valid, jm, torch.full_like(jm, torch.nan)))
+        distances.append(torch.where(valid, distance, torch.full_like(distance, torch.nan)))
     return torch.stack(distances, dim=1)
 
 
-def worst_case_jm(mu, sigma, subsets):
-    """Compute F(S), the smallest pairwise JM distance, for each subset (Eq. 3).
+def pairwise_jm(mu, sigma, subsets):
+    """Compute the JM distance of every class pair for a batch of subsets."""
+    return jm_from_bhattacharyya(pairwise_bhattacharyya(mu, sigma, subsets))
 
-    Returns NaN for a subset if any of its pairs could not be evaluated.
+
+def worst_case_bhattacharyya(mu, sigma, subsets):
+    """Compute the smallest pairwise Bhattacharyya distance for each subset.
+
+    JM increases with Bhattacharyya distance, so this ranks subsets the same way
+    as F(S) in Eq. 3, without JM's rounding ties close to 2. Returns NaN for a
+    subset if any of its pairs could not be evaluated.
     """
-    distances = pairwise_jm(mu, sigma, subsets)
+    distances = pairwise_bhattacharyya(mu, sigma, subsets)
     scores = distances.nan_to_num(torch.inf).amin(dim=1)
     return torch.where(distances.isnan().any(dim=1), torch.nan, scores)
+
+
+def worst_case_jm(mu, sigma, subsets):
+    """Compute F(S), the smallest pairwise JM distance, for each subset (Eq. 3)."""
+    return jm_from_bhattacharyya(worst_case_bhattacharyya(mu, sigma, subsets))
