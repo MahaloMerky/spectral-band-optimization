@@ -1,0 +1,23 @@
+name: bandopt
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - numpy
+  - scipy
+  - pandas
+  - scikit-learn
+  - matplotlib
+  - xarray
+  - netcdf4
+  - rioxarray
+  - dask
+  - joblib
+  - numba
+  - optuna
+  - pytest
+  - pip:
+      - earthaccess
+      - torch
+      - -e .

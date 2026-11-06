@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+.venv/
+build/
+dist/
+
+# Data and outputs are regenerated, not committed
+data/raw/
+data/interim/
+data/processed/
+results/
+logs/
+*.nc
+*.npz
+*.tif
+
+# Credentials
+.env
+.netrc
+_netrc
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
