@@ -8,6 +8,35 @@ W_PER_M2_TO_UW_PER_CM2 = 100.0
 EMIT_FILL_VALUE = -9999.0
 
 
+def load_solar_spectrum(path):
+    """Read a solar spectrum as (wavelengths in nm, irradiance in W/m^2/nm).
+
+    Accepts the TSIS-1 HSRS NetCDF file (variables whose names contain
+    "wavelength" and "SSI"), or a text/CSV file of two columns in those units.
+    Lines starting with # are skipped.
+    """
+    path = str(path)
+    if path.endswith(".nc"):
+        import netCDF4
+
+        with netCDF4.Dataset(path) as dataset:
+            names = list(dataset.variables)
+            wavelength = [n for n in names if "wavelength" in n.lower()]
+            irradiance = [n for n in names if n.lower() == "ssi"]
+            if len(wavelength) != 1 or len(irradiance) != 1:
+                raise KeyError(
+                    f"{path}: expected one wavelength variable and one 'SSI' variable, "
+                    f"found {names}"
+                )
+            wavelengths = np.asarray(dataset[wavelength[0]][:], dtype=float)
+            values = np.asarray(dataset[irradiance[0]][:], dtype=float)
+    else:
+        table = np.loadtxt(path, delimiter="," if path.endswith(".csv") else None, comments="#")
+        wavelengths, values = table[:, 0], table[:, 1]
+    order = np.argsort(wavelengths)
+    return wavelengths[order], values[order]
+
+
 def band_solar_irradiance(solar_wavelengths_nm, solar_irradiance, centres_nm, fwhm_nm):
     """Convolve a solar spectrum with Gaussian band responses.
 

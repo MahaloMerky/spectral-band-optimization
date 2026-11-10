@@ -12,6 +12,10 @@ scratch storage and symlink them here.
 | OLI and OLI-2 relative spectral responses | USGS | `data/raw/srf/` |
 | Landsat Next band edges | [USGS Fact Sheet 2024-3005](https://pubs.usgs.gov/publication/fs20243005) | `data/raw/srf/` |
 
+For each scene, download the three files of the same granule (same
+`YYYYMMDDTHHMMSS` timestamp): `EMIT_L1B_RAD`, `EMIT_L1B_OBS`, and `EMIT_L2A_MASK`.
+Hand-drawn cloud polygons go in `data/labels/`.
+
 EMIT downloads need a free [Earthdata account](https://urs.earthdata.nasa.gov/users/new).
 Keep the login in `~/.netrc`, never in this repository.
 

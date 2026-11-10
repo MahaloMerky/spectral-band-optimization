@@ -28,3 +28,11 @@ _netrc
 .idea/
 .DS_Store
 Thumbs.db
+
+# LaTeX build files
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.log
+paper/*.out
+paper/main.pdf

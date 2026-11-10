@@ -9,6 +9,9 @@ description = "Exact, heuristic, and differentiable satellite spectral band sele
 requires-python = ">=3.11"
 dependencies = ["numpy", "scikit-learn", "torch"]
 
+[project.optional-dependencies]
+data = ["netCDF4", "rasterio"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

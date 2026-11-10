@@ -134,12 +134,14 @@ def test_stats_to_merge_pipeline(pixel_table, tmp_path):
 
     stats = out / "stats_fold0.npz"
     chunks = tmp_path / "chunks"
-    for task in range(2):
+    # Two chunks run as separate calls, as when splitting a search between two PCs.
+    for part in ("0", "1"):
         done = run_script(
-            "exact_search.py", "--stats", stats, "--k", 2,
-            "--task-id", task, "--n-tasks", 2, "--out", chunks,
+            "exact_search.py", "--stats", stats, "--k", 2, "--device", "cpu",
+            "--chunk-size", 8, "--chunks", part, "--out", chunks,
         )
         assert done.returncode == 0, done.stderr
+    assert len(list(chunks.glob("chunk_*.npz"))) == 2
 
     done = run_script("merge_exact.py", chunks, "--stats", stats)
     assert done.returncode == 0, done.stderr
@@ -153,7 +155,29 @@ def test_stats_to_merge_pipeline(pixel_table, tmp_path):
     # A wrong statistics file must not be merged silently.
     done = run_script("merge_exact.py", chunks, "--stats", out / "stats_fold1.npz")
     assert done.returncode != 0
-    assert "do not match" in done.stderr
+    assert "statistics other than" in done.stderr
+
+
+def test_search_resumes_and_refuses_to_mix_searches(pixel_table, tmp_path):
+    out = tmp_path / "stats"
+    run_script("compute_stats.py", "--pixels", pixel_table, "--out", out, "--folds", 2)
+    chunks = tmp_path / "chunks"
+    common = ("--k", 2, "--device", "cpu", "--chunk-size", 8, "--out", chunks)
+
+    done = run_script("exact_search.py", "--stats", out / "stats_fold0.npz", "--chunks", "0", *common)
+    assert done.returncode == 0, done.stderr
+    first = (chunks / "chunk_00000.npz").stat().st_mtime_ns
+
+    # Rerunning everything skips the finished chunk and only adds the missing one.
+    done = run_script("exact_search.py", "--stats", out / "stats_fold0.npz", *common)
+    assert done.returncode == 0, done.stderr
+    assert (chunks / "chunk_00000.npz").stat().st_mtime_ns == first
+    assert "chunk 0/" not in done.stdout and "chunk 1/" in done.stdout
+
+    # Different statistics in the same directory must not be resumed into it.
+    done = run_script("exact_search.py", "--stats", out / "stats_fold1.npz", *common)
+    assert done.returncode != 0
+    assert "different search" in done.stderr
 
 
 def test_merge_warns_when_near_ties_may_be_cut_off(pixel_table, tmp_path):

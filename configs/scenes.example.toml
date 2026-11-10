@@ -1,0 +1,37 @@
+# Scene list for scripts/build_pixel_table.py. Copy to configs/scenes.toml and edit.
+# Relative paths are resolved from this file's folder.
+
+# TSIS-1 HSRS NetCDF, or a two-column text/CSV file: wavelength (nm), W/m^2/nm.
+solar_spectrum = "../data/raw/solar/hybrid_reference_spectrum_p1nm_resolution.nc"
+
+# Every WorldCover tile covering any scene. Glob patterns are allowed.
+worldcover_tiles = ["../data/raw/worldcover/*.tif"]
+
+# WorldCover code -> class, applied to every scene. The built-in defaults are
+#   10 tree cover -> vegetation, 30 grassland -> vegetation, 50 built-up -> urban,
+#   60 bare/sparse -> bare_soil, 80 permanent water -> water.
+# Add or change codes here; use "ignore" to drop one.
+# Classes: vegetation, urban, bare_soil, sand, water.
+[worldcover_classes]
+# 40 = "vegetation"   # cropland, if your scenes are at peak growing season
+
+# One [[scene]] block per EMIT granule. All three files must share the same
+# granule timestamp (EMIT_..._YYYYMMDDTHHMMSS_...).
+[[scene]]
+id = "desert_01"
+radiance = "../data/raw/emit/EMIT_L1B_RAD_001_20230101T000000_0000000_000.nc"
+observation = "../data/raw/emit/EMIT_L1B_OBS_001_20230101T000000_0000000_000.nc"
+mask = "../data/raw/emit/EMIT_L2A_MASK_001_20230101T000000_0000000_000.nc"
+# WorldCover has one bare class, so desert scenes call it sand.
+[scene.worldcover_classes]
+60 = "sand"
+
+[[scene]]
+id = "cropland_cloud_01"
+radiance = "../data/raw/emit/EMIT_L1B_RAD_001_20230202T000000_0000000_000.nc"
+observation = "../data/raw/emit/EMIT_L1B_OBS_001_20230202T000000_0000000_000.nc"
+mask = "../data/raw/emit/EMIT_L2A_MASK_001_20230202T000000_0000000_000.nc"
+# Hand-drawn cloud polygons (GeoJSON, lon/lat), each with a "label" property of
+# "liquid_cloud" or "ice_cloud". Only pixels inside a polygon AND flagged as cloud
+# by the L2A mask become cloud samples.
+clouds = "../data/labels/cropland_cloud_01_clouds.geojson"

@@ -12,12 +12,16 @@ dependencies:
   - xarray
   - netcdf4
   - rioxarray
+  - rasterio
   - dask
   - joblib
   - numba
   - optuna
   - pytest
   - pip:
+      # CUDA 12.8 build: required for RTX 50-series (Blackwell) GPUs, and also
+      # runs on CPU-only PCs.
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - torch>=2.7
       - earthaccess
-      - torch
       - -e .

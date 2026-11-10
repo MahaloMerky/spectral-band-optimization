@@ -10,6 +10,7 @@ import numpy as np
 import torch
 
 from bandopt.combinatorics import unrank_subsets
+from bandopt.exact import statistics_fingerprint
 from bandopt.separability import jm_from_bhattacharyya, pairwise_jm
 
 
@@ -52,6 +53,9 @@ def main():
         sys.exit(f"{n_failed} subsets could not be scored, so the optimum is not guaranteed")
 
     stats = np.load(args.stats)
+    fingerprint = statistics_fingerprint(stats["mu"], stats["sigma"])
+    if any(str(chunk["stats_fingerprint"]) != fingerprint for chunk in chunks):
+        sys.exit(f"Some chunks were computed from statistics other than {args.stats}")
     wavelengths = stats["wavelengths_nm"]
     if wavelengths.size != n_bands:
         sys.exit(f"{args.stats} has {wavelengths.size} bands, but the search used {n_bands}")

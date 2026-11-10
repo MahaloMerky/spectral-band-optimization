@@ -8,7 +8,7 @@ import torch
 from bandopt.combinatorics import chunk_range, unrank_subsets
 from bandopt.exact import search_rank_range
 from bandopt.sensors import candidate_band_mask, gaussian_response, simulate_bands
-from bandopt.separability import pairwise_jm, worst_case_bhattacharyya, worst_case_jm
+from bandopt.separability import _cholesky, pairwise_jm, worst_case_bhattacharyya, worst_case_jm
 from bandopt.stats import class_statistics
 
 
@@ -58,6 +58,15 @@ def test_worst_case_is_smallest_pair():
     subsets = torch.tensor([[0, 1], [2, 3]])
     scores = worst_case_jm(mu, sigma, subsets)
     assert torch.equal(scores, pairwise_jm(mu, sigma, subsets).amin(dim=1))
+
+
+@pytest.mark.parametrize("k", [1, 2, 5, 6])
+def test_unrolled_cholesky_matches_torch(k):
+    _, sigma = random_statistics(n_classes=6, n_bands=k, seed=k)
+    factors, log_det, ok = _cholesky(sigma)
+    assert ok.all()
+    torch.testing.assert_close(factors, torch.linalg.cholesky(sigma))
+    torch.testing.assert_close(log_det, torch.logdet(sigma))
 
 
 def test_non_positive_definite_subset_is_nan():
