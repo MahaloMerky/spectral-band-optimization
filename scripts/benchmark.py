@@ -5,15 +5,25 @@ Run it on each candidate PC and compare the subsets/s column, for example:
     python scripts/benchmark.py --device cpu
 
 Uses random statistics with the planned problem size, so no data is needed.
+Add --log results/benchmark.csv to keep each measurement, for example to compare
+thread counts for RQ4:
+    python scripts/benchmark.py --device cpu --threads 4 --log results/benchmark.csv
 """
 
 import argparse
 import math
 import time
+from pathlib import Path
 
 import torch
 
 from bandopt.exact import describe_device, pick_device, search_rank_range
+from bandopt.timing import append_rows, format_duration, timestamp
+
+BENCHMARK_LOG_FIELDS = (
+    "recorded_at", "k", "n_bands", "classes", "batch_size", "subsets", "seconds",
+    "subsets_per_s", "projected_seconds", "device",
+)
 
 
 def synchronize(device):
@@ -34,6 +44,7 @@ def main():
         "--batch-sizes", type=int, nargs="+", default=[25_000, 100_000, 400_000]
     )
     parser.add_argument("--seconds", type=float, default=5.0, help="Time per measurement")
+    parser.add_argument("--log", type=Path, help="Append each measurement to this CSV file")
     args = parser.parse_args()
 
     if args.threads:
@@ -62,15 +73,22 @@ def main():
                 search_rank_range(mu, sigma, k, start, stop, batch_size)
                 scored += stop - start
             synchronize(device)
-            rate = scored / (time.perf_counter() - began)
+            seconds = time.perf_counter() - began
+            rate = scored / seconds
             print(f"{k:>2} {batch_size:>9,} {rate:>14,.0f} {format_duration(total / rate):>14}")
-
-
-def format_duration(seconds):
-    for unit, size in (("d", 86400), ("h", 3600), ("min", 60)):
-        if seconds >= size:
-            return f"{seconds / size:.1f} {unit}"
-    return f"{seconds:.1f} s"
+            if args.log:
+                append_rows(args.log, [{
+                    "recorded_at": timestamp(),
+                    "k": k,
+                    "n_bands": args.bands,
+                    "classes": args.classes,
+                    "batch_size": batch_size,
+                    "subsets": scored,
+                    "seconds": f"{seconds:.6f}",
+                    "subsets_per_s": f"{rate:.1f}",
+                    "projected_seconds": f"{total / rate:.1f}",
+                    "device": describe_device(device),
+                }], BENCHMARK_LOG_FIELDS)
 
 
 if __name__ == "__main__":

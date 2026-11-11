@@ -50,11 +50,13 @@ def statistics_fingerprint(mu, sigma):
 
 
 @torch.inference_mode()
-def search_rank_range(mu, sigma, k, start, stop, batch_size=100_000, top=1000):
+def search_rank_range(mu, sigma, k, start, stop, batch_size=100_000, top=1000, on_batch=None):
     """Score ranks in [start, stop) and keep the highest-scoring subsets.
 
     Subsets that could not be scored are counted in n_failed. A nonzero count
-    means the result is not a guaranteed optimum.
+    means the result is not a guaranteed optimum. If given, on_batch is called
+    with the number of subsets in each batch once it has been queued, for
+    progress reporting.
     """
     device = mu.device
     n_bands = mu.shape[1]
@@ -78,6 +80,8 @@ def search_rank_range(mu, sigma, k, start, stop, batch_size=100_000, top=1000):
         keep = torch.topk(candidate_scores, min(top, candidate_scores.numel())).indices
         best_ranks = candidate_ranks[keep]
         best_scores = candidate_scores[keep]
+        if on_batch is not None:
+            on_batch(batch_stop - batch_start)
 
     finite = best_scores > -torch.inf
     return ChunkResult(

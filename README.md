@@ -119,6 +119,17 @@ The search uses the GPU when PyTorch can see one, or the CPU otherwise (force on
 each chunk of `--chunk-size` subsets as it finishes. If a run is interrupted, start
 the same command again and it continues from the first missing chunk.
 
+While it runs, the last line of the terminal is a progress bar that updates every
+half second, also partway through a chunk:
+
+```
+k=5  [############------------------]  40.5%  3,500,000,000/8,637,487,551  1,200,000/s  elapsed 10.0 min  left 1.2 h  chunk 71/172
+```
+
+A resumed run starts at its real percentage, and the rate and time left use only the
+current session. The bar is not drawn when output goes to a file (or with
+`--no-progress`); the line printed after each chunk still gives the time left.
+
 `--chunks 0-31` runs only part of the chunk range, for example to spread a long
 search over several sessions.
 
@@ -127,6 +138,27 @@ every candidate subset was scored successfully, all chunks were computed from th
 given statistics file, and the stored scores match it. Only a passing merge counts as
 an exact optimum. It warns if the list of near-ties may be incomplete, in which case
 rerun the search with a larger `--top` in a new output directory.
+
+## Timing
+
+Every finished chunk appends a row to a timing log: k, band count, chunk, subsets,
+seconds, subsets/s and device. By default the log is `timings.csv` next to the
+`--out` directory, so `results/exact/k3`, `results/exact/k4` and so on share
+`results/exact/timings.csv` (set another path with `--timings`). Each run also prints
+its own total, and the merge step prints the summed compute time of all chunks for
+that k. To compare band counts:
+
+```bash
+python scripts/timing_report.py results/exact/timings.csv --csv results/timing_summary.csv
+```
+
+The report gives one row per k, band count and device: chunks and subsets timed,
+total compute time, subsets/s, and the projected time of the full search. A rerun
+chunk counts once (its latest timing), and folds are pooled. The first chunk of each
+run includes start-up work, so short runs read slightly slow.
+
+For the RQ4 thread-scaling comparison, `benchmark.py --log results/benchmark.csv`
+keeps every benchmark measurement as well.
 
 ## Layout
 
@@ -140,6 +172,7 @@ rerun the search with a larger `--top` in a new output directory.
 | `src/bandopt/separability.py` | Batched Bhattacharyya, Jeffries–Matusita, and worst-case score (Eqs. 2–3), with unrolled small-matrix Cholesky |
 | `src/bandopt/combinatorics.py` | Integer-to-subset mapping and chunking of the search space |
 | `src/bandopt/exact.py` | Exhaustive scoring of one chunk, keeping the top subsets; device selection |
+| `src/bandopt/timing.py` | Timing logs and their per-k summary |
 | `scripts/` | Command-line entry points, including `benchmark.py` |
 | `configs/` | Scene lists for `build_pixel_table.py` |
 | `paper/` | LaTeX paper |

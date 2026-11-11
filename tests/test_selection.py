@@ -1,4 +1,6 @@
+import io
 import itertools
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -9,7 +11,9 @@ import torch
 
 from bandopt.sensors import CIRRUS_RUN_WINDOWS_NM, candidate_band_mask
 from bandopt.separability import worst_case_bhattacharyya, worst_case_jm
+from bandopt.progress import ProgressBar
 from bandopt.stats import scene_folds
+from bandopt.timing import append_rows, read_rows, summarize_search_log
 from bandopt.toa import (
     W_PER_M2_TO_UW_PER_CM2,
     band_solar_irradiance,
@@ -189,3 +193,86 @@ def test_merge_warns_when_near_ties_may_be_cut_off(pixel_table, tmp_path):
     done = run_script("merge_exact.py", chunks, "--stats", stats, "--tolerance", 2)
     assert done.returncode == 0, done.stderr
     assert "WARNING" in done.stdout
+
+
+def test_timing_summary_counts_each_chunk_once_and_groups_by_k():
+    def row(k, chunk, subsets, seconds, device="cpu", fingerprint="a"):
+        return {
+            "k": str(k), "n_bands": "10", "chunk": str(chunk), "subsets": str(subsets),
+            "seconds": str(seconds), "device": device, "stats_fingerprint": fingerprint,
+        }
+
+    rows = [
+        row(2, 0, 30, 3.0),
+        row(2, 0, 30, 1.0),  # Rerun of chunk 0: only this one counts.
+        row(2, 1, 15, 0.5),
+        row(2, 0, 30, 2.0, fingerprint="b"),  # Another fold is pooled.
+        row(3, 0, 120, 4.0),
+        row(3, 0, 120, 1.0, device="gpu"),
+    ]
+    summaries = summarize_search_log(rows)
+    assert [(s["k"], s["device"]) for s in summaries] == [(2, "cpu"), (3, "cpu"), (3, "gpu")]
+
+    k2 = summaries[0]
+    assert k2["chunks"] == 3 and k2["subsets"] == 75
+    assert k2["seconds"] == pytest.approx(3.5)
+    assert k2["subsets_per_s"] == pytest.approx(75 / 3.5)
+    assert k2["projected_seconds"] == pytest.approx(math.comb(10, 2) / (75 / 3.5))
+    assert summaries[2]["subsets_per_s"] == pytest.approx(120)
+
+
+def test_timing_log_refuses_a_different_layout(tmp_path):
+    path = tmp_path / "log.csv"
+    append_rows(path, [{"a": 1, "b": 2}], ["a", "b"])
+    append_rows(path, [{"a": 3, "b": 4}], ["a", "b"])
+    assert len(read_rows(path)) == 2
+    with pytest.raises(ValueError, match="columns"):
+        append_rows(path, [{"a": 1}], ["a"])
+
+
+def test_search_logs_timings_and_report_summarises_them(pixel_table, tmp_path):
+    out = tmp_path / "stats"
+    run_script("compute_stats.py", "--pixels", pixel_table, "--out", out, "--folds", 2)
+    stats = out / "stats_all.npz"
+    for k in (2, 3):
+        done = run_script(
+            "exact_search.py", "--stats", stats, "--k", k, "--device", "cpu",
+            "--chunk-size", 10, "--out", tmp_path / "exact" / f"k{k}",
+        )
+        assert done.returncode == 0, done.stderr
+        assert "This session:" in done.stdout
+
+    log = tmp_path / "exact" / "timings.csv"
+    rows = read_rows(log)
+    n_bands = int(rows[0]["n_bands"])
+    for k in (2, 3):
+        assert sum(int(r["subsets"]) for r in rows if r["k"] == str(k)) == math.comb(n_bands, k)
+
+    done = run_script("merge_exact.py", tmp_path / "exact" / "k3", "--stats", stats)
+    assert done.returncode == 0, done.stderr
+    assert "Compute time:" in done.stdout
+
+    summary = tmp_path / "summary.csv"
+    done = run_script("timing_report.py", log, "--csv", summary)
+    assert done.returncode == 0, done.stderr
+    assert [r["k"] for r in read_rows(summary)] == ["2", "3"]
+
+
+def test_progress_bar_counts_resumed_work_and_session_rate():
+    stream = io.StringIO()
+    bar = ProgressBar(total=1000, done=400, label="k=3", interval=0, stream=stream, enabled=True)
+    bar.update(100)
+    bar.skip(100)
+    assert bar.done == 600 and bar.session_done == 100
+    assert "60.0%" in bar.render()
+    bar.message("chunk 1/9: done")
+    bar.close()
+    output = stream.getvalue()
+    assert "k=3" in output and "50.0%" in output and output.endswith("\n")
+
+    # Not a terminal: nothing is drawn.
+    quiet = io.StringIO()
+    bar = ProgressBar(total=10, stream=quiet)
+    bar.update(5)
+    bar.close()
+    assert quiet.getvalue() == ""

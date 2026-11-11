@@ -12,6 +12,7 @@ import torch
 from bandopt.combinatorics import unrank_subsets
 from bandopt.exact import statistics_fingerprint
 from bandopt.separability import jm_from_bhattacharyya, pairwise_jm
+from bandopt.timing import format_duration
 
 
 def to_jm(distance):
@@ -107,6 +108,12 @@ def main():
         return " ".join(f"{wavelengths[band]:.1f}" for band in subsets[i].tolist())
 
     print(f"All {total:,} subsets of {k} from {n_bands} bands were scored.")
+    compute_seconds = sum(float(chunk["elapsed_seconds"]) for chunk in chunks)
+    devices = sorted({str(chunk["device"]) for chunk in chunks})
+    print(
+        f"Compute time: {format_duration(compute_seconds)} over {len(chunks)} chunks "
+        f"({total / max(compute_seconds, 1e-9):,.0f} subsets/s) on {'; '.join(devices)}"
+    )
     print(f"Exact optimum: worst-case JM {to_jm(best_distance):.6f} at {describe(distances.argmax())} nm")
     print(f"Near-ties within {args.tolerance} JM: {int(tied.sum())}")
     print(f"Selected by mean JM: {describe(order[0])} nm (mean JM {mean_jm[order[0]]:.6f})")
