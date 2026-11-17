@@ -84,6 +84,25 @@ def test_scene_folds_keep_scenes_whole():
         assert not set(scenes[train]) & set(scenes[test])
 
 
+def test_scene_folds_spread_a_rare_class_over_folds():
+    # Class 2 is in only two scenes, both small; size balancing alone could put
+    # them in the same held-out fold. Every fold must keep class 2 for training.
+    rng = np.random.default_rng(0)
+    labels, scenes = [], []
+    for i, n in enumerate([400, 380, 360, 340, 60, 50]):
+        scene_labels = rng.integers(0, 2, n)
+        if i >= 4:
+            scene_labels[: n // 2] = 2
+        labels.append(scene_labels)
+        scenes.append(np.full(n, f"s{i}"))
+    labels, scenes = np.concatenate(labels), np.concatenate(scenes)
+    folds = scene_folds(labels, scenes, 3)
+    for train, test in folds:
+        assert 2 in labels[train]
+        assert not set(scenes[train]) & set(scenes[test])
+    assert np.all(sum(test.astype(int) for _, test in folds) == 1)
+
+
 def test_scene_folds_reject_fold_that_loses_a_class():
     labels = np.array([0, 0, 0, 0, 1, 1])
     scenes = np.array(["a", "a", "b", "b", "c", "c"])

@@ -203,6 +203,63 @@ run includes start-up work, so short runs read slightly slow.
 For the RQ4 thread-scaling comparison, `benchmark.py --log results/benchmark.csv`
 keeps every benchmark measurement as well.
 
+## Heuristics, OLI, classifiers and learned bands
+
+Each script writes a CSV that `make_figures.py` turns into a table or figure.
+
+```bash
+# RQ2: SFS, SFFS, mRMR once; simulated annealing and a genetic algorithm per seed;
+# group-lasso logistic regression (GL) when --pixels is given.
+# Gaps are against the exact optimum where results/exact_all/k<k>/ exists.
+python scripts/run_heuristics.py --stats data/processed/stats/stats_all.npz \
+    --pixels data/processed/pixels.npz \
+    --k 3 4 5 6 8 10 --seeds 30 --exact-dir results/exact_all --out results/heuristics_all.csv
+
+# RQ1: simulated OLI bands, scored on the same statistics as the exact search
+python scripts/evaluate_sensors.py --stats data/processed/stats/stats_all.npz \
+    --exact-dir results/exact_all --out results/sensors_all.csv
+
+# Wrapper check: LDA, random forest and MLP on held-out scenes, per fold
+python scripts/evaluate_classifiers.py --pixels data/processed/pixels.npz \
+    --stats-dir data/processed/stats --results-dir results --k 3 4 --out results/classifiers.csv
+
+# RQ3: learnable Gaussian bands + classifier, per fold, from several random starts
+python scripts/train_differentiable.py --pixels data/processed/pixels.npz \
+    --stats-dir data/processed/stats --k 3 4 5 --seeds 3 --out results/differentiable.csv
+```
+
+OLI bands are Gaussians on the published band edges, not the official spectral
+responses (yet). The learned-band absorption penalty uses a proxy that is 1 inside
+the water-vapour windows. `build_pixel_table.py --screen-water 0.05
+--screen-vegetation 0.4` optionally drops water pixels bright at 1.65 µm and
+vegetation pixels with low NDVI.
+
+## Running everything on the GPU workstation
+
+The raw EMIT data and the pixel table are built on the data PC; the searches and
+experiments run on the RTX 5080 workstation. Only the processed folder moves
+(about 120 MB):
+
+1. On the data PC, finish the inputs: review the cloud polygons, then build the
+   screened table and statistics (or reuse `D:\bandopt-data\screened\processed`):
+   ```bash
+   python scripts/build_pixel_table.py --config configs/scenes.toml \
+       --out D:/bandopt-data/screened/processed/pixels.npz --screen-water 0.05 --screen-vegetation 0.4
+   python scripts/compute_stats.py --pixels D:/bandopt-data/screened/processed/pixels.npz \
+       --out D:/bandopt-data/screened/processed/stats --folds 3
+   ```
+2. Copy `<data>/processed/` (`pixels.npz` and `stats/`) to the workstation.
+3. On the workstation: `git pull`, then `conda env update -f environment.yml --prune`
+   (or `conda env create` the first time), and check that PyTorch sees the GPU.
+4. Run every step, which resumes if interrupted:
+   ```bash
+   python scripts/run_all.py --data <data> --device cuda
+   ```
+   This runs the exact searches (k = 3, 4 on all scenes and every fold; k = 5 on
+   fold0), the OLI comparison, the heuristics, the classifier check, the learned
+   bands, and `make_figures.py`. Commit `paper/figures` and `paper/generated` from
+   there, or copy `<data>/results/` back and rerun `make_figures.py`.
+
 ## Paper figures and tables
 
 `scripts/make_figures.py` writes every figure (`paper/figures/*.pdf`) and generated
@@ -231,6 +288,9 @@ cd paper && latexmk -pdf main.tex
 | `src/bandopt/exact.py` | Exhaustive scoring of one chunk, keeping the top subsets; device selection |
 | `src/bandopt/timing.py` | Timing logs and their per-k summary |
 | `src/bandopt/progress.py` | Terminal progress bar for the exact search |
+| `src/bandopt/heuristics.py` | SFS, SFFS, mRMR, simulated annealing, genetic algorithm |
+| `src/bandopt/group_lasso.py` | Group-lasso multinomial logistic regression (FISTA path) |
+| `src/bandopt/differentiable.py` | Learnable Gaussian bands, classifier, and training loop |
 | `scripts/` | Command-line entry points: downloading, drawing cloud polygons, the pixel table, statistics, search, merge, timing, figures, and `benchmark.py` |
 | `data/labels/` | Cloud polygons (GeoJSON), one file per cloud scene |
 | `configs/` | Scene lists for `build_pixel_table.py` |

@@ -139,6 +139,37 @@ def read_cloud_polygons(path, grid):
     return labels
 
 
+SCREEN_BANDS_NM = (650.0, 860.0, 1650.0)
+
+
+def spectral_screen(labels, red, nir, swir, water_max_swir=None, vegetation_min_ndvi=None):
+    """Optional spectral screening of the two noisiest surface classes.
+
+    WorldCover water includes salt flats, shrunken reservoirs and shorelines, and
+    its grassland includes senescent grass. Screening drops water pixels brighter
+    than `water_max_swir` at 1.65 um and vegetation pixels with NDVI below
+    `vegetation_min_ndvi`. It ties those labels to the 0.65, 0.86 and 1.65 um
+    reflectance, so report it when used.
+
+    Args:
+        labels: Class indices (pixels,).
+        red, nir, swir: TOA reflectance at 0.65, 0.86 and 1.65 um (pixels,).
+        water_max_swir: Upper limit for water at 1.65 um, or None to skip.
+        vegetation_min_ndvi: Lower NDVI limit for vegetation, or None to skip.
+
+    Returns:
+        Boolean mask (pixels,) of pixels to keep.
+    """
+    keep = np.ones(labels.shape, dtype=bool)
+    if water_max_swir is not None:
+        keep &= ~((labels == class_index("water")) & ~(swir <= water_max_swir))
+    if vegetation_min_ndvi is not None:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ndvi = (nir - red) / (nir + red)
+        keep &= ~((labels == class_index("vegetation")) & ~(ndvi >= vegetation_min_ndvi))
+    return keep
+
+
 def label_grid(grid, fractions, cloud, any_flag, cloud_polygons=None, purity=0.9, cirrus=None):
     """Combine WorldCover purity, the L2A mask, and cloud polygons into labels.
 

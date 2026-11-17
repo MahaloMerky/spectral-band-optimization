@@ -206,9 +206,15 @@ from salt flats and shrunken reservoirs that WorldCover maps as permanent
 water, shoreline mixing, and thin unflagged cloud or haze. WorldCover's
 grassland also includes senescent grass, so the ``vegetation'' class has median
 NDVI below 0.2 in the Namib, Atacama and Australian scenes. Both problems
-widen the within-class spread that the separability score penalises.
-\todo{decide on a fix: spectral screening of water and vegetation, renaming the
-vegetation class, or dropping scenes, and rerun.}
+widen the within-class spread that the separability score penalises. An
+optional spectral screen, applied before sampling, drops water pixels brighter
+than a threshold at 1.65\um{} and vegetation pixels below an NDVI threshold;
+because it ties those two labels to the 0.65, 0.86 and 1.65\um{} reflectance,
+it must be reported when used. The final runs apply it with a 1.65\um{}
+threshold of 0.05 for water and an NDVI threshold of 0.4 for vegetation, which
+reduces the water class from 22{,}237 to 10{,}360 pixels and the vegetation
+class from 26{,}076 to 20{,}285, leaving the other classes unchanged. The
+preliminary results in Section~\ref{sec:prelim} predate the screen.
 
 \begin{figure}[t]
 \centering
@@ -220,9 +226,15 @@ pixels; green vegetation lies right of the dashed line. Scenes with fewer than
 \label{fig:quality}
 \end{figure}
 
-\paragraph{Reference sensors.} OLI and OLI-2 relative spectral responses
-(USGS) and the published Landsat Next band edges \citep{usgs2024} are applied to
-the EMIT spectra to produce baseline band sets.
+\paragraph{Reference sensors.} OLI bands are simulated from the EMIT spectra
+as Gaussians centred on each band's published edges with a FWHM equal to the
+edge-to-edge width (coastal 433--453, blue 450--515, green 525--600, red
+630--680, NIR 845--885, SWIR1 1560--1660, SWIR2 2100--2300, cirrus
+1360--1390\nm). Because a simulated band is a weighted mean of EMIT bands with
+weights $W$, its class statistics are $W\mu_c$ and $W\Sigma_cW^\top$, so OLI is
+scored on exactly the same statistics as the EMIT subsets. \todo{replace the
+Gaussian approximation with the OLI relative spectral responses, and add Landsat
+Next from its band edges \citep{usgs2024}.}
 
 % ---------------------------------------------------------------------------
 \section{Methods}
@@ -349,16 +361,46 @@ exact optimum. It also flags when a chunk's top-1000 list may have truncated
 near-ties, in which case the search is repeated with a larger list.
 
 \subsection{Heuristics}
-\todo{implementation pending; update once the code exists.}
-For larger $k$ we evaluate sequential forward selection and sequential floating
-forward selection \citep{pudil1994}, mRMR \citep{peng2005}, a genetic algorithm,
-simulated annealing, and group-lasso multinomial logistic regression. The
-stochastic methods run 30--50 seeds as independent array tasks. For $k$ where
-the exact optimum $S^\star$ is known, each heuristic receives an optimality gap
-$1 - F(S_\mathrm{heur})/F(S^\star)$.
+\label{sec:heuristics}
+All heuristics maximise the same worst-case Bhattacharyya score as the exact
+search, evaluated with the same batched code:
+\begin{description}
+  \item[SFS and SFFS.] Sequential forward selection adds, $k$ times, the band
+    that most increases the score; the floating variant \citep{pudil1994}
+    follows each addition with removals for as long as they beat the best
+    subset found so far of the smaller size.
+  \item[mRMR.] Minimum-redundancy maximum-relevance \citep{peng2005}, adapted
+    to class statistics: a band's relevance is its own worst-case distance
+    (rescaled to $[0,1]$) and its redundancy the mean absolute pooled
+    within-class correlation with the bands already chosen.
+  \item[Simulated annealing.] Each step swaps one band for one not in the
+    subset and accepts by the Metropolis rule, for 20{,}000 steps under
+    geometric cooling by a factor of 1000. The starting temperature is
+    calibrated so that a median worsening move from random subsets is accepted
+    half the time. The 30 seeds run as independent chains scored in one batch
+    per step.
+  \item[Genetic algorithm.] A population of 200 subsets evolves for 150
+    generations with tournament selection (size 3), crossover that draws $k$
+    bands from the union of two parents, swap mutation with probability 0.3,
+    and four elite subsets kept unchanged; 30 seeds.
+  \item[Group lasso.] Unlike the others, this embedded method selects bands
+    through a classifier rather than the separability score. Multinomial
+    logistic regression on standardised bands is fitted with class-weighted
+    cross-entropy and the penalty $\lambda\sum_j\lVert W_j\rVert_2$, where
+    $W_j$ holds band $j$'s coefficients for all classes, so a band is kept or
+    dropped as a whole. The problem is solved by accelerated proximal gradient
+    descent (FISTA) along a path of 60 geometrically decreasing $\lambda$ with
+    warm starts, stopping at the first $\lambda$ with at least $k$ active
+    bands; if more than $k$ become active there, the $k$ with the largest
+    $\lVert W_j\rVert_2$ are kept. It uses the pixels of the same training
+    scenes as the class statistics.
+\end{description}
+For $k$ where the exact optimum $S^\star$ is known, each heuristic receives an
+optimality gap $1 - F(S_\mathrm{heur})/F(S^\star)$. Group lasso is scored the
+same way, although it does not optimise $F$.
 
 \subsection{Differentiable sensor design}
-\todo{implementation pending; update once the code exists.}
+\label{sec:differentiable}
 Each of the $k$ bands is modelled as a Gaussian response with learnable centre
 $c_j$ and width $\sigma_j$,
 \begin{equation}
@@ -374,16 +416,37 @@ filter design in imaging \citep{chakrabarti2016,nie2018}. The loss is
     + \beta \sum_j \max\!\bigl(0,\, w_\mathrm{min} - 2.355\,\sigma_j\bigr)^2,
   \label{eq:loss}
 \end{equation}
-where $A(\lambda) = 1 - T(\lambda)$ is absorption from a standard-atmosphere
-transmittance and $w_\mathrm{min}$ is a minimum FWHM. During training,
-band-specific Gaussian noise with standard deviation proportional to
-$1/\sqrt{\mathrm{FWHM}_j}$ models the dependence of SNR on bandwidth.
+where $A(\lambda)$ is atmospheric absorption and $w_\mathrm{min}=10$\nm{} is a
+minimum FWHM; we use $\alpha=1$ and $\beta=10^{-3}$. For now $A(\lambda)$ is a
+proxy equal to 1 inside the two water-vapour windows, 0 elsewhere, with 10\nm{}
+cosine edges \todo{replace with $1-T(\lambda)$ from a standard-atmosphere
+transmittance}. During training, band-specific Gaussian noise with standard
+deviation $0.005\sqrt{30\,\mathrm{nm}/\mathrm{FWHM}_j}$ (reflectance units)
+models the dependence of SNR on bandwidth.
+
+Centres are parameterised through a sigmoid over the EMIT range and FWHMs as
+$1\,\mathrm{nm}+e^{r_j}$, so that a step changes a band's width by a fraction
+of its size. The classifier is a batch-normalised multilayer perceptron with
+two hidden layers of 64 units, trained with class-weighted cross-entropy (so
+that the rare ice class counts) and Adam (learning rate 0.05 for the band
+parameters and $2\times10^{-3}$ for the classifier) for 150 epochs on all 285
+EMIT bands of the training scenes. A Gaussian band gets almost no gradient
+from features several widths away, so bands start wide (300\nm{} FWHM) at
+random centres outside the windows, and each design is trained from three
+random starts; the start with the lowest training loss is kept, without
+reference to the held-out scenes.
 
 \subsection{Evaluation}
 \label{sec:evaluation}
 
 \paragraph{Leakage control.} Folds are whole scenes \citep{roberts2017}, and
-every fold is required to contain training pixels of all seven classes. Class
+every fold is required to contain training pixels of all seven classes. Scenes
+are assigned deterministically, rarest classes first: each class's unassigned
+scenes go to the folds holding the fewest scenes of that class, ties broken by
+pixel count, so that the few scenes of a rare class are spread over different
+folds. Balancing by pixel count alone, as in group $k$-fold, placed both
+ice-cloud scenes in the same held-out fold once the screen changed the scene
+sizes. Class
 statistics, and therefore band selection, use only a fold's training scenes;
 selecting bands with held-out scenes would inflate held-out scores. Because
 ice cloud occurs in only two scenes, we use three folds, with which every
@@ -482,18 +545,57 @@ $k=3,4$ and extrapolated at the $k=4$ rate for $k=5,6$.}
 \end{figure}
 
 \subsection{RQ1: Exact optima and the Landsat gap}
-\todo{Table: optimal subsets for $k=3,4,5$ (centre wavelengths), worst-case
-and mean JM, per fold, with OLI and Landsat Next for comparison.}
+%RQ1-TEXT
 
-\todo{Figure: selected band positions over the mean class TOA spectra.}
+\IfFileExists{generated/oli_table.tex}{
+\begin{table}[t]
+\centering
+\caption{Preliminary: best simulated-OLI subset of each size, scored on the
+all-scene statistics, against the exact EMIT optimum for the same $k$.}
+\label{tab:oli}
+\input{generated/oli_table}
+\end{table}}{}
+
+\todo{$k=5$ exact optima per fold; Landsat Next.}
 
 \todo{Cirrus sensitivity run, $k\le4$, against 8-band OLI.}
 
 \subsection{RQ2: Heuristics versus the exact optimum}
-\todo{Figure: optimality gap versus $k$ per method; spread across seeds.}
+%RQ2-TEXT
+
+\IfFileExists{generated/heuristics_table.tex}{
+\begin{table}[t]
+\centering
+\caption{Preliminary heuristic results on the all-scene statistics. Best and
+median over 30 seeds for SA and GA; gap of the best run against the exact
+optimum where it is known.}
+\label{tab:heuristics}
+\small
+\input{generated/heuristics_table}
+\end{table}}{}
+
+\IfFileExists{figures/heuristics.pdf}{
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.8\textwidth]{heuristics}
+\caption{Preliminary worst-case JM reached by each heuristic (boxes: spread
+over 30 seeds; dots: best run) and the exact optimum (stars).}
+\label{fig:heuristics}
+\end{figure}}{}
 
 \subsection{RQ3: Learned band designs}
-\todo{Learned centres and widths; comparison with exact subsets and Landsat Next.}
+%RQ3-TEXT
+
+\IfFileExists{generated/differentiable_table.tex}{
+\begin{table}[t]
+\centering
+\caption{Preliminary learned designs: for each fold and $k$, the random start
+with the lowest training loss, its macro-F1 on the held-out scenes, and the
+worst-case JM of its bands on the fold's statistics.}
+\label{tab:differentiable}
+\small
+\input{generated/differentiable_table}
+\end{table}}{}
 
 \subsection{RQ4: Scaling}
 \todo{Measured subsets per second on the RTX 5080 and the i9 CPU for
@@ -501,8 +603,20 @@ $k=3$--6; speed-up and parallel efficiency against CPU thread count;
 projected and measured wall time of the $k=5$ search.}
 
 \subsection{Classifier evaluation}
-\todo{Macro-F1 and per-class F1 on held-out scenes, focusing on liquid versus
-ice cloud and urban versus soil/sand.}
+%CLASSIFIER-TEXT
+
+\IfFileExists{generated/classifier_table.tex}{
+\begin{table}[t]
+\centering
+\caption{Preliminary macro-F1 on held-out scenes (mean $\pm$ standard
+deviation over the three folds). Exact subsets are each fold's own selection;
+OLI is the seven simulated reflective bands; ``all'' uses every candidate band.}
+\label{tab:classifiers}
+\input{generated/classifier_table}
+\end{table}}{}
+
+\todo{Per-class F1, focusing on liquid versus ice cloud and urban versus
+soil/sand.}
 
 % ---------------------------------------------------------------------------
 \section{Discussion}

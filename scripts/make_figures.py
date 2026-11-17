@@ -307,6 +307,110 @@ def timing(results_dir, out, n_bands):
     return summaries
 
 
+def read_csv(path):
+    if not path.exists():
+        return None
+    with path.open() as file:
+        return list(csv.DictReader(file))
+
+
+METHOD_COLOURS = {"SFS": "#8d6e63", "SFFS": "#6d4c41", "mRMR": "#9e9e9e", "GL": "#fb8c00", "SA": "#1e88e5", "GA": "#43a047"}
+
+
+def heuristics_figure(results_dir, out):
+    rows = read_csv(results_dir / "heuristics_all.csv")
+    if not rows:
+        print("  no heuristics_all.csv; skipped")
+        return None
+    pyplot = plt()
+    fig, ax = pyplot.subplots(figsize=(6.0, 3.2))
+    ks = sorted({int(r["k"]) for r in rows})
+    methods = [m for m in METHOD_COLOURS if any(r["method"] == m for r in rows)]
+    width = 0.8 / len(methods)
+    for i, method in enumerate(methods):
+        for k in ks:
+            values = [float(r["min_jm"]) for r in rows if r["method"] == method and int(r["k"]) == k]
+            x = k + (i - (len(methods) - 1) / 2) * width
+            if len(values) > 1:
+                ax.boxplot([values], positions=[x], widths=width * 0.8, showfliers=False, patch_artist=True,
+                           boxprops={"facecolor": METHOD_COLOURS[method], "alpha": 0.5},
+                           medianprops={"color": METHOD_COLOURS[method]})
+            ax.plot([x], [max(values)], "o", ms=3.5, color=METHOD_COLOURS[method],
+                    label=method if k == ks[0] else None)
+    exact = {int(r["k"]): float(r["exact_min_jm"]) for r in rows if r["exact_min_jm"]}
+    if exact:
+        ax.plot(list(exact), list(exact.values()), "k*", ms=9, label="Exact optimum")
+    ax.set_xticks(ks)
+    ax.set_xlabel("Bands k")
+    ax.set_ylabel("Worst-case JM")
+    ax.legend(fontsize=7, frameon=False, ncol=3)
+    fig.savefig(out / "heuristics.pdf")
+    pyplot.close(fig)
+    return rows
+
+
+def method_tables(results_dir, generated):
+    """Write the heuristics, OLI, classifier and differentiable tables when their results exist."""
+    rows = read_csv(results_dir / "heuristics_all.csv")
+    if rows:
+        lines = [r"\begin{tabular}{rlrrrr}", r"\toprule",
+                 r"$k$ & Method & Best JM & Median JM & Gap of best & Time/run (s) \\", r"\midrule"]
+        for k in sorted({int(r["k"]) for r in rows}):
+            for method in METHOD_COLOURS:
+                runs = [r for r in rows if int(r["k"]) == k and r["method"] == method]
+                if not runs:
+                    continue
+                jm = [float(r["min_jm"]) for r in runs]
+                best = max(runs, key=lambda r: float(r["min_jm"]))
+                gap = f"{float(best['gap']):.3f}" if best["gap"] else "--"
+                seconds = np.mean([float(r["seconds"]) for r in runs])
+                lines.append(f"{k} & {method} & {max(jm):.3f} & {np.median(jm):.3f} & {gap} & {seconds:.1f} \\\\")
+            lines.append(r"\addlinespace")
+        lines += [r"\bottomrule", r"\end{tabular}"]
+        (generated / "heuristics_table.tex").write_text("\n".join(lines) + "\n")
+
+    rows = read_csv(results_dir / "sensors_all.csv")
+    if rows:
+        lines = [r"\begin{tabular}{rlrrr}", r"\toprule",
+                 r"$k$ & Best OLI subset & OLI JM & EMIT optimum & Gap \\", r"\midrule"]
+        for r in rows:
+            emit_jm = f"{float(r['emit_min_jm']):.3f}" if r["emit_min_jm"] else "--"
+            gap = f"{float(r['gap']):.3f}" if r["gap"] else "--"
+            bands = latex_escape(r["oli_bands"].replace(" + ", ", "))
+            lines.append(f"{r['k']} & {bands} & {float(r['oli_min_jm']):.3f} & {emit_jm} & {gap} \\\\")
+        lines += [r"\bottomrule", r"\end{tabular}"]
+        (generated / "oli_table.tex").write_text("\n".join(lines) + "\n")
+
+    rows = read_csv(results_dir / "classifiers.csv")
+    if rows:
+        features = list(dict.fromkeys(r["features"] for r in rows))
+        classifiers = list(dict.fromkeys(r["classifier"] for r in rows))
+        lines = [r"\begin{tabular}{l" + "r" * len(classifiers) + "}", r"\toprule",
+                 "Features & " + " & ".join(classifiers) + r" \\", r"\midrule"]
+        for feature in features:
+            cells = []
+            for classifier in classifiers:
+                values = [float(r["macro_f1"]) for r in rows if r["features"] == feature and r["classifier"] == classifier]
+                cells.append(f"{np.mean(values):.3f} $\\pm$ {np.std(values):.3f}" if values else "--")
+            lines.append(latex_escape(feature) + " & " + " & ".join(cells) + r" \\")
+        lines += [r"\bottomrule", r"\end{tabular}"]
+        (generated / "classifier_table.tex").write_text("\n".join(lines) + "\n")
+
+    rows = read_csv(results_dir / "differentiable.csv")
+    if rows:
+        lines = [r"\begin{tabular}{rrllrr}", r"\toprule",
+                 r"Fold & $k$ & Centres (nm) & FWHM (nm) & Macro-F1 & Worst-case JM \\", r"\midrule"]
+        for r in rows:
+            if r.get("chosen", "1") != "1":
+                continue
+            centres = ", ".join(f"{float(c):.0f}" for c in r["centres_nm"].split())
+            fwhm = ", ".join(f"{float(w):.0f}" for w in r["fwhm_nm"].split())
+            lines.append(f"{r['fold']} & {r['k']} & {centres} & {fwhm} & {float(r['macro_f1']):.3f} & "
+                         f"{float(r['min_jm']):.3f} \\\\")
+        lines += [r"\bottomrule", r"\end{tabular}"]
+        (generated / "differentiable_table.tex").write_text("\n".join(lines) + "\n")
+
+
 # ----------------------------------------------------------------- tables
 
 def write_tables(scenes, table, results_rows, timings, n_bands, generated):
@@ -386,7 +490,9 @@ def main():
     print("label quality");    label_quality(table, figures)
     print("selected bands");   rows = selected_bands(table, args.results_dir, stats_names, (3, 4), figures)
     print("timing");           summaries = timing(args.results_dir, figures, n_bands)
+    print("heuristics");       heuristics_figure(args.results_dir, figures)
     print("tables");           write_tables(scenes, table, rows, summaries, n_bands, generated)
+    method_tables(args.results_dir, generated)
     print(f"Wrote figures to {figures} and tables to {generated}")
 
 

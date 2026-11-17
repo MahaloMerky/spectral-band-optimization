@@ -25,11 +25,13 @@ import numpy as np
 from bandopt import emit
 from bandopt.labels import (
     CLASSES,
+    SCREEN_BANDS_NM,
     DEFAULT_WORLDCOVER_CLASSES,
     UNLABELLED,
     class_index,
     label_grid,
     read_cloud_polygons,
+    spectral_screen,
     worldcover_fractions,
 )
 from bandopt.toa import (
@@ -115,7 +117,7 @@ def sensor_pixels(grid, labels):
     return rows[keep], cols[keep], cell_labels[keep], np.unravel_index(cells[keep], grid.shape)
 
 
-def process_scene(scene, solar, max_per_class, purity, rng, tiles):
+def process_scene(scene, solar, max_per_class, purity, rng, tiles, screen=None):
     grid = emit.read_grid(scene["radiance"])
     shape = radiance_shape(scene["radiance"])
     cloud, any_flag = emit.read_cloud_flags(scene["mask"])
@@ -133,6 +135,25 @@ def process_scene(scene, solar, max_per_class, purity, rng, tiles):
     )
     rows, cols, pixel_labels, (cell_rows, cell_cols) = sensor_pixels(grid, labels)
 
+    wavelengths, fwhm = emit.read_wavelengths(scene["radiance"])
+    cube = emit.read_radiance(scene["radiance"])
+    solar_wavelengths, solar_irradiance = solar
+    irradiance = band_solar_irradiance(
+        solar_wavelengths, solar_irradiance * W_PER_M2_TO_UW_PER_CM2, wavelengths, fwhm
+    )
+
+    n_screened = 0
+    if screen:
+        # Screen before sampling, so a scene still gives up to max_per_class clean pixels.
+        bands = [int(np.abs(wavelengths - nm).argmin()) for nm in SCREEN_BANDS_NM]
+        sample = radiance_to_toa_reflectance(
+            cube[rows, cols][:, bands], irradiance[bands], zenith[rows, cols], distance[rows, cols]
+        )
+        keep = spectral_screen(pixel_labels, *sample.T, **screen)
+        n_screened = int((~keep).sum())
+        rows, cols, pixel_labels = rows[keep], cols[keep], pixel_labels[keep]
+        cell_rows, cell_cols = cell_rows[keep], cell_cols[keep]
+
     chosen = []
     for index in range(len(CLASSES)):
         members = np.flatnonzero(pixel_labels == index)
@@ -143,18 +164,12 @@ def process_scene(scene, solar, max_per_class, purity, rng, tiles):
     rows, cols, pixel_labels = rows[chosen], cols[chosen], pixel_labels[chosen]
     lon, lat = (a[cell_rows[chosen], cell_cols[chosen]] for a in grid.cell_centres())
 
-    wavelengths, fwhm = emit.read_wavelengths(scene["radiance"])
-    radiance = emit.read_radiance(scene["radiance"])[rows, cols]
-
-    solar_wavelengths, solar_irradiance = solar
-    irradiance = band_solar_irradiance(
-        solar_wavelengths, solar_irradiance * W_PER_M2_TO_UW_PER_CM2, wavelengths, fwhm
-    )
     reflectance = radiance_to_toa_reflectance(
-        radiance, irradiance, zenith[rows, cols], distance[rows, cols]
+        cube[rows, cols], irradiance, zenith[rows, cols], distance[rows, cols]
     )
     finite = np.isfinite(reflectance).all(axis=1)
     return {
+        "n_screened": n_screened,
         "spectra": reflectance[finite].astype(np.float32),
         "labels": pixel_labels[finite],
         "lon": lon[finite],
@@ -182,7 +197,16 @@ def main():
     parser.add_argument("--purity", type=float, default=0.9)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--scenes", nargs="+", help="Only process these scene ids")
+    parser.add_argument("--screen-water", type=float, metavar="R1650",
+                        help="Drop water pixels brighter than this at 1.65 um (e.g. 0.05)")
+    parser.add_argument("--screen-vegetation", type=float, metavar="NDVI",
+                        help="Drop vegetation pixels with NDVI below this (e.g. 0.4)")
     args = parser.parse_args()
+    screen = {
+        key: value for key, value in (("water_max_swir", args.screen_water),
+                                      ("vegetation_min_ndvi", args.screen_vegetation))
+        if value is not None
+    }
 
     solar_path, tiles, scenes = load_config(args.config)
     if args.scenes:
@@ -196,7 +220,7 @@ def main():
     parts, counts = [], []
     reference_wavelengths = fwhm = None
     for scene in scenes:
-        part = process_scene(scene, solar, args.max_per_class, args.purity, rng, tiles)
+        part = process_scene(scene, solar, args.max_per_class, args.purity, rng, tiles, screen)
         if reference_wavelengths is None:
             reference_wavelengths, fwhm = part["wavelengths"], part["fwhm"]
         elif part["wavelengths"].shape != reference_wavelengths.shape or not np.allclose(
@@ -209,7 +233,8 @@ def main():
         counts.append([scene["id"], *row])
         print(
             f"{scene['id']}: " + ", ".join(f"{n} {c}" for n, c in zip(row, CLASSES) if n)
-            + (f" ({part['n_dropped']} dropped as non-finite)" if part["n_dropped"] else ""),
+            + (f" ({part['n_dropped']} dropped as non-finite)" if part["n_dropped"] else "")
+            + (f" ({part['n_screened']} screened out)" if part["n_screened"] else ""),
             flush=True,
         )
 
