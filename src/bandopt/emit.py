@@ -149,3 +149,16 @@ def read_cloud_flags(mask_path):
         }
     any_flag = np.logical_or.reduce(list(flags.values()))
     return flags["cloud flag"], any_flag
+
+
+def read_cirrus_flag(mask_path):
+    """Return the L2A cirrus flag (downtrack, crosstrack) as a boolean array.
+
+    The cirrus flag comes from the 1.38 um water-vapour band, which the main
+    band search excludes, so using it to admit ice-cloud pixels does not tie
+    the labels to a candidate band.
+    """
+    with _open(mask_path) as dataset:
+        names = _band_names(dataset, "mask_bands", mask_path)
+        mask = _variable(dataset, "mask", mask_path)
+        return mask[:, :, _find_band(names, "cirrus flag", mask_path, exact=True)] > 0

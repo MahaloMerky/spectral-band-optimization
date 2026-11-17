@@ -1,0 +1,194 @@
+# Scene list for scripts/download_data.py and scripts/build_pixel_table.py.
+# Relative paths are resolved from this file's folder. data/raw is a junction to
+# D:/bandopt-data/raw on the workstation used so far (C: is nearly full).
+
+solar_spectrum = "../data/raw/solar/hybrid_reference_spectrum_p1nm_resolution_c2022-11-30_with_unc.nc"
+worldcover_tiles = ["../data/raw/worldcover/*.tif"]
+
+# Built-in WorldCover mapping: 10 tree cover and 30 grassland -> vegetation,
+# 50 built-up -> urban, 60 bare/sparse -> bare_soil, 80 permanent water -> water.
+# Desert scenes below map 60 to sand instead.
+[worldcover_classes]
+
+# Namib Sand Sea, Namibia, 2023-01-13, 0% cloud
+[[scene]]
+id = "namib_sand"
+site = "Namib Sand Sea, Namibia"
+date = "2023-01-13"
+cloud_cover = 0
+role = "surface"
+radiance = "../data/raw/emit/EMIT_L1B_RAD_001_20230113T145839_2301309_011.nc"
+observation = "../data/raw/emit/EMIT_L1B_OBS_001_20230113T145839_2301309_011.nc"
+mask = "../data/raw/emit/EMIT_L2A_MASK_001_20230113T145839_2301309_011.nc"
+[scene.worldcover_classes]
+60 = "sand"
+
+# Rub' al Khali, Saudi Arabia, 2023-10-08, 5% cloud
+[[scene]]
+id = "rub_al_khali_sand"
+site = "Rub' al Khali, Saudi Arabia"
+date = "2023-10-08"
+cloud_cover = 5
+role = "surface"
+radiance = "../data/raw/emit/EMIT_L1B_RAD_001_20231008T051723_2328104_017.nc"
+observation = "../data/raw/emit/EMIT_L1B_OBS_001_20231008T051723_2328104_017.nc"
+mask = "../data/raw/emit/EMIT_L2A_MASK_001_20231008T051723_2328104_017.nc"
+[scene.worldcover_classes]
+60 = "sand"
+
+# Atacama, Chile, 2023-01-22, 1% cloud
+[[scene]]
+id = "atacama_soil"
+site = "Atacama, Chile"
+date = "2023-01-22"
+cloud_cover = 1
+role = "surface"
+radiance = "../data/raw/emit/EMIT_L1B_RAD_001_20230122T170850_2302211_019.nc"
+observation = "../data/raw/emit/EMIT_L1B_OBS_001_20230122T170850_2302211_019.nc"
+mask = "../data/raw/emit/EMIT_L2A_MASK_001_20230122T170850_2302211_019.nc"
+
+# Central Australia, 2026-01-16, 0% cloud
+[[scene]]
+id = "australia_soil"
+site = "Central Australia"
+date = "2026-01-16"
+cloud_cover = 0
+role = "surface"
+radiance = "../data/raw/emit/EMIT_L1B_RAD_001_20260116T040511_2601602_004.nc"
+observation = "../data/raw/emit/EMIT_L1B_OBS_001_20260116T040511_2601602_004.nc"
+mask = "../data/raw/emit/EMIT_L2A_MASK_001_20260116T040511_2601602_004.nc"
+
+# Flint Hills, Kansas, 2025-07-27, 1% cloud: grassland, reservoirs, town
+[[scene]]
+id = "kansas_grassland"
+site = "Flint Hills, Kansas, USA"
+date = "2025-07-27"
+cloud_cover = 1
+role = "surface"
+radiance = "../data/raw/emit/EMIT_L1B_RAD_001_20250727T194032_2520813_018.nc"
+observation = "../data/raw/emit/EMIT_L1B_OBS_001_20250727T194032_2520813_018.nc"
+mask = "../data/raw/emit/EMIT_L2A_MASK_001_20250727T194032_2520813_018.nc"
+
+# Oregon Coast Range and Willamette Valley, 2025-06-02, 2% cloud: forest, lakes, towns
+[[scene]]
+id = "oregon_forest"
+site = "Oregon Coast Range, USA"
+date = "2025-06-02"
+cloud_cover = 2
+role = "surface"
+radiance = "../data/raw/emit/EMIT_L1B_RAD_001_20250602T200010_2515313_005.nc"
+observation = "../data/raw/emit/EMIT_L1B_OBS_001_20250602T200010_2515313_005.nc"
+mask = "../data/raw/emit/EMIT_L2A_MASK_001_20250602T200010_2515313_005.nc"
+
+# Cairo, Egypt, 2023-07-30, 4% cloud: city, Nile, rocky desert (kept as bare_soil)
+[[scene]]
+id = "cairo_urban"
+site = "Cairo, Egypt"
+date = "2023-07-30"
+cloud_cover = 4
+role = "surface"
+radiance = "../data/raw/emit/EMIT_L1B_RAD_001_20230730T104812_2321107_038.nc"
+observation = "../data/raw/emit/EMIT_L1B_OBS_001_20230730T104812_2321107_038.nc"
+mask = "../data/raw/emit/EMIT_L2A_MASK_001_20230730T104812_2321107_038.nc"
+
+# Dubai, UAE, 2025-08-04, 5% cloud: city, sand desert, sea (hazy, some glint)
+[[scene]]
+id = "dubai_urban"
+site = "Dubai, UAE"
+date = "2025-08-04"
+cloud_cover = 5
+role = "surface"
+radiance = "../data/raw/emit/EMIT_L1B_RAD_001_20250804T053043_2521604_007.nc"
+observation = "../data/raw/emit/EMIT_L1B_OBS_001_20250804T053043_2521604_007.nc"
+mask = "../data/raw/emit/EMIT_L2A_MASK_001_20250804T053043_2521604_007.nc"
+[scene.worldcover_classes]
+60 = "sand"
+
+# Central India, 2024-05-20, 81% cloud: thunderstorm anvil (ice) and cumulus (liquid)
+[[scene]]
+id = "india_storm"
+site = "Central India"
+date = "2024-05-20"
+cloud_cover = 81
+role = "ice and liquid cloud"
+radiance = "../data/raw/emit/EMIT_L1B_RAD_001_20240520T101741_2414107_013.nc"
+observation = "../data/raw/emit/EMIT_L1B_OBS_001_20240520T101741_2414107_013.nc"
+mask = "../data/raw/emit/EMIT_L2A_MASK_001_20240520T101741_2414107_013.nc"
+# Uncomment once the liquid/ice polygons are drawn (GeoJSON, lon/lat, "label" property).
+clouds = "../data/labels/india_storm_clouds.geojson"
+
+# Oklahoma City, 2024-04-19, 60% cloud: cirrus too thin for the L2A flags, so used for surface classes only
+[[scene]]
+id = "oklahoma_cirrus"
+site = "Oklahoma City, USA"
+date = "2024-04-19"
+cloud_cover = 60
+role = "surface"
+radiance = "../data/raw/emit/EMIT_L1B_RAD_001_20240419T183938_2411012_035.nc"
+observation = "../data/raw/emit/EMIT_L1B_OBS_001_20240419T183938_2411012_035.nc"
+mask = "../data/raw/emit/EMIT_L2A_MASK_001_20240419T183938_2411012_035.nc"
+# Uncomment once the liquid/ice polygons are drawn (GeoJSON, lon/lat, "label" property).
+# clouds = "../data/labels/oklahoma_cirrus_clouds.geojson"
+
+# Sahel, Niger, 2022-08-29, 64% cloud: cumulus (liquid), a few possibly glaciating cells
+[[scene]]
+id = "sahel_cumulus"
+site = "Sahel, Niger"
+date = "2022-08-29"
+cloud_cover = 64
+role = "liquid cloud"
+radiance = "../data/raw/emit/EMIT_L1B_RAD_001_20220829T105245_2224107_030.nc"
+observation = "../data/raw/emit/EMIT_L1B_OBS_001_20220829T105245_2224107_030.nc"
+mask = "../data/raw/emit/EMIT_L2A_MASK_001_20220829T105245_2224107_030.nc"
+# Uncomment once the liquid/ice polygons are drawn (GeoJSON, lon/lat, "label" property).
+clouds = "../data/labels/sahel_cumulus_clouds.geojson"
+
+# Amazon, Brazil, 2025-09-22, 41% cloud: cumulus (liquid) over forest and river
+[[scene]]
+id = "amazon_cumulus"
+site = "Amazon, Brazil"
+date = "2025-09-22"
+cloud_cover = 41
+role = "liquid cloud"
+radiance = "../data/raw/emit/EMIT_L1B_RAD_001_20250922T155920_2526511_026.nc"
+observation = "../data/raw/emit/EMIT_L1B_OBS_001_20250922T155920_2526511_026.nc"
+mask = "../data/raw/emit/EMIT_L2A_MASK_001_20250922T155920_2526511_026.nc"
+# Uncomment once the liquid/ice polygons are drawn (GeoJSON, lon/lat, "label" property).
+clouds = "../data/labels/amazon_cumulus_clouds.geojson"
+
+# Paraguay / northern Argentina, 2024-11-25, 72% cloud: cumulus (liquid); the smooth sheet is thin and unflagged
+[[scene]]
+id = "paraguay_storm"
+site = "Paraguay"
+date = "2024-11-25"
+cloud_cover = 72
+role = "liquid cloud"
+radiance = "../data/raw/emit/EMIT_L1B_RAD_001_20241125T135648_2433009_043.nc"
+observation = "../data/raw/emit/EMIT_L1B_OBS_001_20241125T135648_2433009_043.nc"
+mask = "../data/raw/emit/EMIT_L2A_MASK_001_20241125T135648_2433009_043.nc"
+# Uncomment once the liquid/ice polygons are drawn (GeoJSON, lon/lat, "label" property).
+clouds = "../data/labels/paraguay_storm_clouds.geojson"
+
+# Nebraska, 2026-07-28, 52% cloud: storm complex and cumulus, both still liquid (1.6/0.65 um ratio ~1.1-1.3)
+[[scene]]
+id = "nebraska_storm"
+site = "Nebraska, USA"
+date = "2026-07-28"
+cloud_cover = 52
+role = "liquid cloud"
+radiance = "../data/raw/emit/EMIT_L1B_RAD_001_20260728T192313_2620913_015.nc"
+observation = "../data/raw/emit/EMIT_L1B_OBS_001_20260728T192313_2620913_015.nc"
+mask = "../data/raw/emit/EMIT_L2A_MASK_001_20260728T192313_2620913_015.nc"
+clouds = "../data/labels/nebraska_storm_clouds.geojson"
+
+# Oklahoma, 2026-06-19, 86% cloud: ice anvil sheet in the south (ratio ~0.5, mostly cirrus-flagged)
+[[scene]]
+id = "oklahoma_storm"
+site = "Oklahoma, USA"
+date = "2026-06-19"
+cloud_cover = 86
+role = "ice cloud"
+radiance = "../data/raw/emit/EMIT_L1B_RAD_001_20260619T172923_2617011_035.nc"
+observation = "../data/raw/emit/EMIT_L1B_OBS_001_20260619T172923_2617011_035.nc"
+mask = "../data/raw/emit/EMIT_L2A_MASK_001_20260619T172923_2617011_035.nc"
+clouds = "../data/labels/oklahoma_storm_clouds.geojson"

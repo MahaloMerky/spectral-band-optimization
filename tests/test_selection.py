@@ -17,6 +17,7 @@ from bandopt.timing import append_rows, read_rows, summarize_search_log
 from bandopt.toa import (
     W_PER_M2_TO_UW_PER_CM2,
     band_solar_irradiance,
+    load_solar_spectrum,
     radiance_to_toa_reflectance,
 )
 
@@ -276,3 +277,22 @@ def test_progress_bar_counts_resumed_work_and_session_rate():
     bar.update(5)
     bar.close()
     assert quiet.getvalue() == ""
+
+
+def test_load_solar_spectrum_reads_tsis_hsrs_layout(tmp_path):
+    netCDF4 = pytest.importorskip("netCDF4")
+    path = tmp_path / "hsrs.nc"
+    with netCDF4.Dataset(path, "w") as dataset:
+        dataset.createDimension("wavelength", 3)
+        # Same variable names as the TSIS-1 HSRS v2 file, which has two names
+        # containing "wavelength".
+        for name, values in (
+            ("SSI", [1.0, 2.0, 3.0]),
+            ("Vacuum Wavelength", [502.0, 500.0, 501.0]),
+            ("Wavelength_Band_Width", [0.1, 0.1, 0.1]),
+            ("SSI_UNC", [0.01, 0.01, 0.01]),
+        ):
+            dataset.createVariable(name, "f8", ("wavelength",))[:] = values
+    wavelengths, irradiance = load_solar_spectrum(path)
+    np.testing.assert_allclose(wavelengths, [500.0, 501.0, 502.0])
+    np.testing.assert_allclose(irradiance, [2.0, 3.0, 1.0])

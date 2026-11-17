@@ -139,12 +139,14 @@ def read_cloud_polygons(path, grid):
     return labels
 
 
-def label_grid(grid, fractions, cloud, any_flag, cloud_polygons=None, purity=0.9):
+def label_grid(grid, fractions, cloud, any_flag, cloud_polygons=None, purity=0.9, cirrus=None):
     """Combine WorldCover purity, the L2A mask, and cloud polygons into labels.
 
     Surface classes need a class fraction of at least `purity`, no cloud,
-    dilated cloud, cirrus or spacecraft flag, and no cloud polygon. Cloud
-    classes need a polygon and the L2A cloud flag.
+    dilated cloud, cirrus or spacecraft flag, and no cloud polygon. Liquid
+    cloud needs a polygon and the L2A cloud flag. Ice cloud needs a polygon and
+    the cloud flag or, when `cirrus` is given, the L2A cirrus flag: the cloud
+    flag misses most ice anvils that are not very bright.
 
     Args:
         grid: The scene's emit.Grid.
@@ -153,6 +155,7 @@ def label_grid(grid, fractions, cloud, any_flag, cloud_polygons=None, purity=0.9
         any_flag: Any L2A cloud-type flag on the grid (height, width).
         cloud_polygons: Output of read_cloud_polygons, or None.
         purity: Minimum class fraction for surface classes.
+        cirrus: L2A cirrus flag on the grid (height, width), or None.
 
     Returns:
         Int array (height, width) of class indices, or UNLABELLED.
@@ -168,6 +171,9 @@ def label_grid(grid, fractions, cloud, any_flag, cloud_polygons=None, purity=0.9
         labels[clear & pure] = class_index(name)
 
     if cloud_polygons is not None:
-        is_cloud = grid.valid & cloud & in_polygon
+        flagged = cloud.copy()
+        if cirrus is not None:
+            flagged |= cirrus & (cloud_polygons == class_index("ice_cloud"))
+        is_cloud = grid.valid & flagged & in_polygon
         labels[is_cloud] = cloud_polygons[is_cloud]
     return labels

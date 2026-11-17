@@ -40,7 +40,10 @@ def main():
     )
     parser.add_argument("--pixels", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True, help="Output directory")
-    parser.add_argument("--folds", type=int, default=5)
+    parser.add_argument(
+        "--folds", type=int, default=5,
+        help="Scene-based folds; 0 writes only stats_all.npz (for quick tests, e.g. one scene)",
+    )
     parser.add_argument(
         "--cirrus-run", action="store_true", help="Keep the 1.35-1.42 um window as candidates"
     )
@@ -55,7 +58,8 @@ def main():
     wavelengths = table["wavelengths_nm"][mask]
 
     args.out.mkdir(parents=True, exist_ok=True)
-    for fold, (train_mask, _) in enumerate(scene_folds(labels, scene_ids, args.folds)):
+    folds = scene_folds(labels, scene_ids, args.folds) if args.folds else []
+    for fold, (train_mask, _) in enumerate(folds):
         path = args.out / f"stats_fold{fold}.npz"
         write_statistics(path, spectra, labels, wavelengths, train_mask, scene_ids)
     # Used only to report the final bands, never to score held-out performance.

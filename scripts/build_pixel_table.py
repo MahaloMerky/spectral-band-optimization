@@ -126,8 +126,10 @@ def process_scene(scene, solar, max_per_class, purity, rng, tiles):
                      f"radiance {shape}. Are the files from the same granule?")
     fractions = worldcover_fractions(tiles, grid, scene["mapping"])
     polygons = read_cloud_polygons(scene["clouds"], grid) if scene["clouds"] else None
+    cirrus = emit.read_cirrus_flag(scene["mask"]) if polygons is not None else None
     labels = label_grid(
-        grid, fractions, grid.to_grid(cloud), grid.to_grid(any_flag), polygons, purity
+        grid, fractions, grid.to_grid(cloud), grid.to_grid(any_flag), polygons, purity,
+        cirrus=grid.to_grid(cirrus) if cirrus is not None else None,
     )
     rows, cols, pixel_labels, (cell_rows, cell_cols) = sensor_pixels(grid, labels)
 

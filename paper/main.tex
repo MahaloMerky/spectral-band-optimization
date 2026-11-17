@@ -19,6 +19,10 @@
 \newcommand{\um}{\,\ensuremath{\mu}m}
 \newcommand{\nm}{\,nm}
 
+% Figures and tables are written by scripts/make_figures.py.
+\graphicspath{{figures/}}
+\input{generated/numbers}
+
 \title{Optimizing Satellite Spectral Bands:\\[2pt]
 \large Exact, Heuristic, and Differentiable Band Selection for\\
 Land-Cover and Cloud Discrimination}
@@ -80,9 +84,43 @@ reported separately (Section~\ref{sec:evaluation}).
 
 \paragraph{Imagery.} EMIT, on the International Space Station, records 285
 bands from about 380 to 2500\nm{} at roughly 7.4\nm{} spacing and 60\,m pixels
-\citep{green2020}. We use \todo{N} scenes covering contrasting biomes (desert,
-cropland and grassland, forest, urban, coast), several of which contain liquid
-and ice cloud. \todo{table of scene IDs, dates, locations.}
+\citep{green2020}. We use \nScenes{} scenes (Figure~\ref{fig:map},
+Table~\ref{tab:scenes}): eight largely clear scenes chosen for their surface
+classes (two sand seas, two bare-soil deserts, a tallgrass prairie, a temperate
+forest, and two cities), a scene over Oklahoma City whose cirrus is too thin to
+label, and six scenes with labelled cloud. All use collection 001 of the L1B radiance, L1B observation geometry,
+and L2A mask products.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{scenes_map}
+\caption{Scene centres, numbered as in Table~\ref{tab:scenes} and coloured by
+the role each scene plays in the cloud classes. Every scene also contributes
+surface pixels.}
+\label{fig:map}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\caption{Scenes and labelled pixels per class after sampling (at most 2000 per
+class and scene). Cloud is the granule's catalogue cloud cover.}
+\label{tab:scenes}
+\resizebox{\textwidth}{!}{\input{generated/scenes_table}}
+\end{table}
+
+\paragraph{Scene selection.} Candidate granules were found by searching NASA's
+Common Metadata Repository with \texttt{earthaccess} around target sites, with
+catalogue cloud cover of 0--5\% for surface scenes and 25--95\% for cloud
+scenes, and keeping only granules with a matching L2A mask. Browse images were
+then inspected by eye. Ice cloud proved hard to find: most cloudy scenes hold
+only liquid cumulus. About 30 browse images of storm-season granules over
+India, Bangladesh, the US Great Plains, Florida, the Sahel, the Congo Basin,
+Paraguay and Thailand were inspected; four promising granules were downloaded,
+and two of them contained ice cloud that the L2A mask flags
+(Section~\ref{sec:labels}). A
+scripted downloader fetches the three files of each granule, the ESA WorldCover
+tiles that overlap every scene, and the solar spectrum (about 30\,GB in all),
+resuming interrupted downloads and retrying transient server errors.
 
 \paragraph{Top-of-atmosphere reflectance.} Surface-reflectance retrieval
 assumes a clear view of the surface, which does not hold over clouds. To keep
@@ -94,12 +132,13 @@ convert each pixel to TOA reflectance,
 \end{equation}
 where $L$ is at-sensor radiance, $d$ the Earth--Sun distance in AU,
 $\theta_s$ the solar zenith angle, and $E_0$ the solar irradiance at 1\,AU.
-$E_0$ is the TSIS-1 hybrid solar reference spectrum \citep{coddington2021},
+$E_0$ is the TSIS-1 hybrid solar reference spectrum (version 2, 0.1\nm{}
+sampling) \citep{coddington2021},
 averaged over each EMIT band with a Gaussian response of the band's published
 full width at half maximum (FWHM). Fill values and pixels with the Sun at or
 below the horizon are discarded.
 
-\paragraph{Labels.} The seven classes are green vegetation, urban, bare
+\paragraph{Labels.}\label{sec:labels} The seven classes are green vegetation, urban, bare
 soil, sand, open water, liquid-water cloud, and ice cloud. Surface classes come
 from ESA WorldCover 10\,m \citep{zanaga2022}. Each class is reprojected as a
 0/1 layer with area averaging onto EMIT's orthorectified grid, giving the share
@@ -108,15 +147,78 @@ one class are kept. Tree cover and grassland form the vegetation class;
 shrubland and cropland are excluded because they mix vegetation and soil.
 WorldCover has a single bare class, which is assigned to sand in desert scenes
 and to bare soil elsewhere. Surface pixels must also carry no cloud, dilated
-cloud, cirrus or spacecraft flag in the EMIT L2A mask. Cloud phase is labelled
-by hand: polygons drawn from SWIR evidence (ice absorbs more strongly at
-1.6\um) and visual interpretation mark liquid and ice cloud, and only pixels
-inside a polygon that the L2A mask also flags as cloud are used.
+cloud, cirrus or spacecraft flag in the EMIT L2A mask.
+
+Cloud phase is labelled with polygons drawn over whole cloud regions
+(Figure~\ref{fig:phase}). Each scene is displayed on its map grid as a
+composite of TOA reflectance at 0.65, 1.6 and 2.2\um{} with one common
+stretch: liquid cloud reflects strongly at all three wavelengths and appears
+white, whereas ice absorbs at 1.6 and 2.2\um{} and appears red. Region-level
+calls were checked against the median reflectance ratio
+$\rho_{1.6}/\rho_{0.65}$, which was 0.31 for the Indian storm core and anvil
+and 0.54 for the Oklahoma anvil, against 1.05--1.41 for every liquid region.
+Thin, see-through cloud and cloud of mixed or uncertain appearance were left
+unlabelled. The polygons were drafted with AI assistance (Claude, Anthropic) and
+reviewed by the author \todo{confirm review and any edits}.
+
+A liquid-cloud sample must lie inside a liquid polygon and carry the L2A cloud
+flag. An ice-cloud sample must lie inside an ice polygon and carry either the
+cloud flag or the L2A cirrus flag. The cirrus flag is needed because the cloud
+flag captures mainly very bright cloud: it covered 0.1\% of the Oklahoma anvil,
+where the cirrus flag covered 55\%. The cirrus flag is derived from the
+1.38\um{} water-vapour band, which is excluded from the main search
+(Section~\ref{sec:candidates}), so admitting it does not tie the labels to a
+candidate band. A third scene with visible cirrus (Oklahoma City, 2024) was too
+thin for either flag and contributes surface classes only.
 
 Labels are built on the orthorectified grid and mapped back to sensor pixels
 through EMIT's geometry lookup table, so spectra are never resampled. A sensor
 pixel that receives two different labels is discarded. Up to 2000 pixels per
-class and scene are sampled at random. \todo{pixel counts per class and scene.}
+class and scene are sampled at random, giving \nPixels{} pixels in total
+(Table~\ref{tab:scenes}). Figure~\ref{fig:spectra} shows the class means.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{cloud_phase}
+\caption{Cloud-phase labelling. Left and centre: the two ice-cloud scenes in
+the 0.65/1.6/2.2\um{} composite, with ice polygons in yellow and liquid
+polygons in blue. Right: mean TOA reflectance of the labelled liquid and ice
+cloud (shading: interquartile range); dashed lines mark the composite's
+wavelengths and grey bands the excluded water-vapour windows.}
+\label{fig:phase}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{class_spectra}
+\caption{Mean TOA reflectance of each class over all scenes ($\pm1$ standard
+deviation shaded; pixel counts in the legend). Grey bands are the water-vapour
+windows removed from the search. Ice cloud stays bright at the edge of the
+1.38\um{} window because it lies above most of the water vapour.}
+\label{fig:spectra}
+\end{figure}
+
+\paragraph{Label quality.} Two surface classes are noisier than their names
+suggest (Figure~\ref{fig:quality}). Clean water is nearly black at 1.65\um,
+yet in nine of the twelve scenes with at least 50 water pixels the median
+``water'' pixel exceeds 0.05 there,
+from salt flats and shrunken reservoirs that WorldCover maps as permanent
+water, shoreline mixing, and thin unflagged cloud or haze. WorldCover's
+grassland also includes senescent grass, so the ``vegetation'' class has median
+NDVI below 0.2 in the Namib, Atacama and Australian scenes. Both problems
+widen the within-class spread that the separability score penalises.
+\todo{decide on a fix: spectral screening of water and vegetation, renaming the
+vegetation class, or dropping scenes, and rerun.}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{label_quality}
+\caption{Label quality by scene. Left: TOA reflectance of water pixels at
+1.65\um; clean water lies left of the dashed line. Right: NDVI of vegetation
+pixels; green vegetation lies right of the dashed line. Scenes with fewer than
+50 pixels of a class are omitted.}
+\label{fig:quality}
+\end{figure}
 
 \paragraph{Reference sensors.} OLI and OLI-2 relative spectral responses
 (USGS) and the published Landsat Next band edges \citep{usgs2024} are applied to
@@ -159,9 +261,9 @@ band reflectance is
 with $\rho(\lambda)$ the EMIT TOA reflectance. We treat EMIT spacing as
 uniform, so the $\Delta\lambda$ terms cancel.
 
-\paragraph{Candidate bands.} Bands inside the strong water-vapour absorption
+\paragraph{Candidate bands.}\label{sec:candidates} Bands inside the strong water-vapour absorption
 windows 1350--1420\nm{} and 1800--1950\nm{} are removed before the search,
-leaving $n = \todo{n}$ candidates. The 1350--1420\nm{} window also holds OLI's
+leaving $n = \nCandidates$ of EMIT's \nBandsEMIT{} bands as candidates. The 1350--1420\nm{} window also holds OLI's
 cirrus band, where ice cloud can remain bright while the surface is hidden. We
 therefore run a sensitivity analysis for $k \le 4$ that keeps this window and
 compares against the 8-band OLI set including cirrus; the main run compares
@@ -220,20 +322,9 @@ pivot is marked as not scored rather than silently skipped.
 
 \begin{table}[t]
 \centering
-\caption{Size of the search space for $n = 255$ candidate bands. To be
-recomputed from the final $n$.}
+\caption{Size of the search space for $n = \nCandidates$ candidate bands.}
 \label{tab:space}
-\begin{tabular}{rrl}
-\toprule
-$k$ & $\binom{n}{k}$ & Approach \\
-\midrule
-3  & $2.7\times10^{6}$  & Exact, one GPU \\
-4  & $1.7\times10^{8}$  & Exact, one GPU \\
-5  & $8.6\times10^{9}$  & Exact, chunked and resumable \\
-6  & $3.6\times10^{11}$ & Stretch goal \\
-10 & $2.7\times10^{17}$ & Heuristics only \\
-\bottomrule
-\end{tabular}
+\input{generated/search_space}
 \end{table}
 
 Table~\ref{tab:space} gives the search-space sizes. Every subset is identified
@@ -294,7 +385,9 @@ $1/\sqrt{\mathrm{FWHM}_j}$ models the dependence of SNR on bandwidth.
 \paragraph{Leakage control.} Folds are whole scenes \citep{roberts2017}, and
 every fold is required to contain training pixels of all seven classes. Class
 statistics, and therefore band selection, use only a fold's training scenes;
-selecting bands with held-out scenes would inflate held-out scores. Exact
+selecting bands with held-out scenes would inflate held-out scores. Because
+ice cloud occurs in only two scenes, we use three folds, with which every
+fold's training scenes still contain all seven classes. Exact
 search is run on every fold for $k\le4$ and on one fixed scene split for
 $k=5$. A final run on all scenes is used only to report the selected bands,
 never to score them.
@@ -312,17 +405,81 @@ be explained physically are flagged as possible data artefacts.
 
 The code is Python, with batched scoring in PyTorch and scikit-learn for
 covariance shrinkage and fold construction. The same code runs on a GPU or on
-CPU threads. All runs use one workstation with an Intel Core i9
+CPU threads. Data preparation and the preliminary tests in
+Section~\ref{sec:prelim} ran on a Windows PC with an Intel Core i9-9900K
+(8 cores) and the CPU build of PyTorch; the $k=5$ search and the GPU
+measurements use a workstation with an Intel Core i9
 \todo{exact i9 model and RAM} and an NVIDIA GeForce RTX 5080 (16\,GB). A
-benchmark script measures subsets per second on the GPU and on the CPU with
-statistics of the planned size. Unit tests cover the unranking, the unrolled factorisation against
-PyTorch's own, the separability scores against direct computation, resuming
-and splitting a search, and the fold construction. The
-repository, pinned environment, and job scripts reproduce every result.
+benchmark script measures subsets per second with statistics of the planned
+size, and every search appends the compute time of each chunk to a log, from
+which the timings below are summarised. Unit tests cover the unranking, the
+unrolled factorisation against PyTorch's own, the separability scores against
+direct computation, resuming and splitting a search, the fold construction,
+the solar-spectrum reader, the cloud-label rules, and the timing summaries.
+The repository, pinned environment, and scripts reproduce every result,
+including every figure and table in this paper.
 \todo{repository URL and commit hash.}
 
 % ---------------------------------------------------------------------------
 \section{Results}
+
+\subsection{Preliminary pipeline test}
+\label{sec:prelim}
+
+\emph{These results test the pipeline end to end on the CPU. The cloud
+polygons are drafts, the label noise of Figure~\ref{fig:quality} is not yet
+corrected, and none of the selections below should be read as final.}
+
+The full pixel table, the three-fold statistics and the exact searches for
+$k=3$ and $k=4$ all ran on real data, and every merge passed its four checks
+(Section~\ref{sec:exact}). Table~\ref{tab:prelim} and
+Figure~\ref{fig:selected} give the selected subsets. In every fold the
+worst-separated pairs are surface classes: urban versus bare soil, vegetation
+versus bare soil, and vegetation versus urban or urban versus water, with JM
+between 0.82 and 1.13 at $k=3$. The cloud classes are never the limiting pair.
+The three folds choose different subsets, from three visible and near-infrared
+bands to three shortwave-infrared bands, so the worst-case optimum is not yet
+stable across scenes; reducing the surface label noise is the next step.
+
+\begin{table}[t]
+\centering
+\caption{Preliminary selections on all scenes and on each fold's training
+scenes (worst-case JM ranks the subsets; near-ties are broken by mean JM).}
+\label{tab:prelim}
+\input{generated/results_table}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{selected_bands}
+\caption{Preliminary selected bands (bottom; black: all scenes, grey: folds)
+under the class-mean TOA spectra (top).}
+\label{fig:selected}
+\end{figure}
+
+Exhaustive scoring ran at about $3.6\times10^{5}$ subsets per second on the
+eight-core CPU at $k=3$ and $2.3\times10^{5}$ at $k=4$ (Table~\ref{tab:timing},
+Figure~\ref{fig:timing}); the $k=4$ run shared the CPU with other work for
+part of its 12.7 minutes, so its rate is a lower bound. Extrapolating that
+rate puts the $k=5$ search at about 11 hours on this CPU, which motivates the
+GPU.
+
+\begin{table}[t]
+\centering
+\caption{Measured exact-search compute time on the test PC, summed over all
+chunks. The $k=3$ row pools four searches (all scenes and the three folds);
+the $k=4$ row is the search on all scenes.}
+\label{tab:timing}
+\input{generated/timing_table}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.6\textwidth]{timing}
+\caption{Time for a full exact search on the test PC's CPU: measured for
+$k=3,4$ and extrapolated at the $k=4$ rate for $k=5,6$.}
+\label{fig:timing}
+\end{figure}
 
 \subsection{RQ1: Exact optima and the Landsat gap}
 \todo{Table: optimal subsets for $k=3,4,5$ (centre wavelengths), worst-case
@@ -357,7 +514,14 @@ from some scenes, so labels carry noise despite the purity rule. TOA
 reflectance includes atmospheric effects that vary between scenes, which the
 filter score treats as class variance. The exact optimum is optimal only for
 the Gaussian-class filter score on training statistics, not for any particular
-classifier. \todo{further limitations from the results.}
+classifier. Ice cloud comes from only two scenes, which limits the number of
+folds to three and makes the ice statistics depend heavily on two storms. The
+cloud polygons were judged partly from the 1.6 and 2.2\um{} reflectance that
+the search can select; drawing whole regions rather than thresholding pixels,
+and relying on cloud morphology such as anvils, limits but does not remove
+this circularity. An independent check against geostationary thermal-infrared
+cloud-phase products is planned \todo{do it or drop this sentence}.
+\todo{further limitations from the results.}
 
 % ---------------------------------------------------------------------------
 \section{Conclusion}

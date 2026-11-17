@@ -24,6 +24,8 @@ imagery on a single workstation with an RTX 5080 GPU. See the [proposal](docs/GG
 | Leakage | Spatial CV for evaluation | Class statistics and band selection also use training scenes only | Selecting bands with held-out scenes would inflate scores |
 | Computing | SLURM cluster job arrays | One workstation: Intel Core i9 with an RTX 5080 GPU | The cluster has no Python. Chunked, resumable runs replace job arrays |
 | OLI baseline | 7 bands | 7 bands in the main run, 8 with cirrus in a sensitivity run for k ≤ 4 | The main run removes the window holding OLI's cirrus band |
+| Ice-cloud samples | Polygon and L2A cloud flag | Polygon and the L2A cloud *or* cirrus flag (liquid still needs the cloud flag) | The cloud flag misses most ice anvils that are not very bright. The cirrus flag comes from the excluded 1.38 µm band |
+| Folds | 5 | 3 | Ice cloud is in only two scenes; with 3 folds every fold's training scenes keep all classes |
 
 "Exact optimum" means the exact optimum of the filter score on the training
 statistics. Classifier results may rank subsets differently.
@@ -31,14 +33,18 @@ statistics. Classifier results may rank subsets differently.
 Search folds: every fold for k ≤ 4, one fixed scene split for k = 5, and a final run
 on all data (`stats_all.npz`) only to report the bands.
 
-Search space with n ≈ 255 candidate bands, to be recomputed from the real band count:
+Search space with n = 256 candidate bands (EMIT's 285 minus 29 in the water-vapour
+windows):
 
 | k | Subsets |
 | --- | --- |
-| 3 | 2.7×10⁶ |
+| 3 | 2.8×10⁶ |
 | 4 | 1.7×10⁸ |
-| 5 | 8.6×10⁹ |
-| 6 | 3.6×10¹¹ |
+| 5 | 8.8×10⁹ |
+| 6 | 3.7×10¹¹ |
+
+On Windows, `environment.yml` pins NumPy to OpenBLAS: conda-forge's MKL clashes with
+the DLLs bundled in the pip PyTorch wheel, and `import torch` fails with WinError 127.
 
 ## Setup
 
@@ -71,6 +77,41 @@ python scripts/benchmark.py --device cuda   # RTX 5080
 python scripts/benchmark.py --device cpu    # i9, for the RQ4 comparison
 ```
 
+## Downloading the data
+
+[configs/scenes.toml](configs/scenes.toml) lists the 15 scenes used, with each one's
+site, date, catalogue cloud cover and role. `scripts/download_data.py` fetches the
+three EMIT files of every scene, the WorldCover tiles that overlap them, and the
+TSIS-1 solar spectrum (about 30 GB). It needs an Earthdata login saved in `~/.netrc`
+or `~/_netrc` (see [data/README.md](data/README.md)), skips files already downloaded,
+and retries server errors, so an interrupted download resumes when run again:
+
+```bash
+python scripts/download_data.py --config configs/scenes.toml --dry-run   # what would be fetched
+python scripts/download_data.py --config configs/scenes.toml
+```
+
+On the PC used so far `data/raw` is a directory junction to `D:\bandopt-data\raw`,
+because C: is nearly full.
+
+## Drawing cloud polygons
+
+`scripts/draw_clouds.py` opens one scene on its map grid and saves liquid- and
+ice-cloud polygons as the GeoJSON that the pixel table reads:
+
+```bash
+python scripts/draw_clouds.py --config configs/scenes.toml --scene india_storm
+```
+
+The default view is a cloud-phase composite (red 0.65 µm, green 1.6 µm, blue 2.2 µm):
+liquid cloud looks white and ice looks red. Left-click corners, then press `l`
+(liquid) or `i` (ice); `v` switches to true colour, `m` toggles the L2A cloud (cyan)
+and cirrus (magenta) outlines, and `s` saves. The help at the top of the script lists
+every key. Saved polygons load again next time, so you can review or edit them.
+
+The polygons in `data/labels/` were drafted with AI assistance and need the author's
+review before final runs.
+
 ## Building the pixel table
 
 `scripts/build_pixel_table.py` turns EMIT granules into the labelled TOA reflectance
@@ -80,11 +121,12 @@ observation geometry, L2A mask), then:
 
 ```bash
 python scripts/build_pixel_table.py --config configs/scenes.toml --out data/processed/pixels.npz
-python scripts/compute_stats.py --pixels data/processed/pixels.npz --out data/processed/stats
+python scripts/compute_stats.py --pixels data/processed/pixels.npz --out data/processed/stats --folds 3
 ```
 
-Try one scene first with `--scenes <id>`. Besides the table, the script writes
-`pixels.counts.csv` with pixel counts per scene and class.
+Try one scene first with `--scenes <id>`; `compute_stats.py --folds 0` then writes only
+`stats_all.npz`, since one scene cannot be split into folds. Besides the table, the
+script writes `pixels.counts.csv` with pixel counts per scene and class.
 
 How pixels are labelled:
 
@@ -92,10 +134,11 @@ How pixels are labelled:
   one class (`--purity`) and no L2A cloud, dilated cloud, cirrus, or spacecraft flag.
   Shrubland and cropland are left out by default. WorldCover has one bare class, so
   each scene's config says whether it is `bare_soil` or `sand`.
-- **Cloud classes** come from polygons you draw by hand, for example in QGIS, and save
+- **Cloud classes** come from polygons drawn with `draw_clouds.py` (or any GIS), saved
   as GeoJSON in longitude/latitude with a `label` property of `liquid_cloud` or
-  `ice_cloud`. Only pixels inside a polygon *and* flagged as cloud by the L2A mask are
-  used.
+  `ice_cloud`. A liquid pixel must be inside a liquid polygon and carry the L2A cloud
+  flag; an ice pixel must be inside an ice polygon and carry the cloud or the cirrus
+  flag.
 - Labels are made on EMIT's lat/lon grid, then mapped back to sensor pixels, so spectra
   are never resampled. A sensor pixel that gets two different labels is dropped.
 - At most `--max-per-class` pixels (default 2000) are sampled per class and scene.
@@ -160,6 +203,20 @@ run includes start-up work, so short runs read slightly slow.
 For the RQ4 thread-scaling comparison, `benchmark.py --log results/benchmark.csv`
 keeps every benchmark measurement as well.
 
+## Paper figures and tables
+
+`scripts/make_figures.py` writes every figure (`paper/figures/*.pdf`) and generated
+table and number (`paper/generated/*.tex`) in the paper from the pipeline outputs.
+Search results are read from `<results-dir>/exact_<stats name>/k<k>/`, so name
+search output folders that way (`exact_all`, `exact_fold0`, ...). Rerun it after new
+results, then rebuild the PDF:
+
+```bash
+python scripts/make_figures.py --pixels data/processed/pixels.npz \
+    --stats-dir data/processed/stats --results-dir results
+cd paper && latexmk -pdf main.tex
+```
+
 ## Layout
 
 | Path | Purpose |
@@ -173,7 +230,9 @@ keeps every benchmark measurement as well.
 | `src/bandopt/combinatorics.py` | Integer-to-subset mapping and chunking of the search space |
 | `src/bandopt/exact.py` | Exhaustive scoring of one chunk, keeping the top subsets; device selection |
 | `src/bandopt/timing.py` | Timing logs and their per-k summary |
-| `scripts/` | Command-line entry points, including `benchmark.py` |
+| `src/bandopt/progress.py` | Terminal progress bar for the exact search |
+| `scripts/` | Command-line entry points: downloading, drawing cloud polygons, the pixel table, statistics, search, merge, timing, figures, and `benchmark.py` |
+| `data/labels/` | Cloud polygons (GeoJSON), one file per cloud scene |
 | `configs/` | Scene lists for `build_pixel_table.py` |
 | `paper/` | LaTeX paper |
 | `data/` | Local data, not committed. See [data/README.md](data/README.md) |

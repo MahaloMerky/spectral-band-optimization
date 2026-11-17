@@ -21,7 +21,10 @@ def load_solar_spectrum(path):
 
         with netCDF4.Dataset(path) as dataset:
             names = list(dataset.variables)
-            wavelength = [n for n in names if "wavelength" in n.lower()]
+            # The HSRS file also has "Wavelength_Band_Width", which is not a wavelength.
+            wavelength = [
+                n for n in names if "wavelength" in n.lower() and "width" not in n.lower()
+            ]
             irradiance = [n for n in names if n.lower() == "ssi"]
             if len(wavelength) != 1 or len(irradiance) != 1:
                 raise KeyError(

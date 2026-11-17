@@ -202,3 +202,28 @@ def test_conflicting_labels_for_one_sensor_pixel_are_dropped():
     # The same label twice keeps the pixel once.
     rows, cols, labels, _ = sensor_pixels(grid, np.array([[1, 1, 2]]))
     assert list(zip(rows, cols, labels)) == [(0, 0, 1), (0, 1, 2)]
+
+
+def test_ice_polygons_accept_cirrus_flag_but_liquid_does_not():
+    from bandopt.labels import UNLABELLED, class_index, label_grid
+
+    shape = (1, 4)
+    grid = Grid(
+        glt_rows=np.zeros(shape, dtype=np.int64),
+        glt_cols=np.arange(4)[None, :],
+        geotransform=(0.0, 1.0, 0.0, 0.0, 0.0, -1.0),
+    )
+    ice, liquid = class_index("ice_cloud"), class_index("liquid_cloud")
+    polygons = np.array([[ice, ice, liquid, liquid]])
+    cloud = np.array([[True, False, True, False]])
+    cirrus = np.array([[False, True, False, True]])
+    any_flag = cloud | cirrus
+
+    labels = label_grid(grid, {}, cloud, any_flag, polygons, cirrus=cirrus)
+    # Ice: cloud-flagged and cirrus-flagged pixels both count.
+    # Liquid: only the cloud-flagged pixel counts.
+    assert labels.tolist() == [[ice, ice, liquid, UNLABELLED]]
+
+    # Without the cirrus flag the old rule applies: cloud flag only.
+    labels = label_grid(grid, {}, cloud, any_flag, polygons)
+    assert labels.tolist() == [[ice, UNLABELLED, liquid, UNLABELLED]]

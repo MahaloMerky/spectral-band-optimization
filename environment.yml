@@ -5,6 +5,9 @@ dependencies:
   - python=3.12
   - pip
   - numpy
+  # OpenBLAS, not MKL: conda-forge's MKL DLLs clash with the ones bundled in the
+  # pip PyTorch wheel on Windows, and `import torch` then fails (WinError 127).
+  - libblas=*=*openblas
   - scipy
   - pandas
   - scikit-learn
